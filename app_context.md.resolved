@@ -1,0 +1,606 @@
+# Biometric App - Contexto Completo
+
+## 📋 Información General
+
+**Nombre:** Biometric Data Pre-processing Module  
+**Versión:** 0.1.0  
+**Tipo:** SaaS de Análisis Bioestadístico  
+**Estado:** En desarrollo activo
+
+## 🏗️ Arquitectura General
+
+```
+Biometric/
+├── frontend/           # React + Vite + TypeScript + Tailwind CSS + Shadcn UI
+│   ├── src/
+│   │   ├── components/     # Componentes React
+│   │   ├── api/           # Servicios API
+│   │   ├── context/       # Gestión de estado global
+│   │   ├── types/         # Definiciones TypeScript
+│   │   ├── hooks/         # Custom hooks
+│   │   ├── App.tsx        # Componente principal
+│   │   └── main.tsx       # Entry point
+│   ├── package.json
+│   └── vite.config.ts
+│
+└── backend/            # FastAPI + Python
+    ├── app/
+    │   ├── api/v1/        # Routers (HTTP layer)
+    │   │   └── endpoints/
+    │   ├── services/      # Business logic
+    │   ├── schemas/       # Pydantic models
+    │   ├── core/         # Config & error handling
+    │   ├── internal/     # Session management
+    │   └── main.py       # Application entry point
+    ├── storage/          # Archivos temporales de sesión
+    ├── requirements.txt
+    └── venv/            # Virtual environment
+```
+
+## 💻 Stack Tecnológico
+
+### Frontend
+- **Framework:** React 18.3
+- **Build Tool:** Vite 6.3.5
+- **Lenguaje:** TypeScript
+- **Estilos:** Tailwind CSS
+- **UI Components:** Shadcn UI (Radix UI primitives)
+- **Iconos:** Lucide React
+- **Charts:** Recharts 2.15
+- **Temas:** Next-themes
+- **Carousels:** Embla Carousel React
+
+### Backend
+- **Framework:** FastAPI 0.115.0
+- **Runtime:** Uvicorn[standard] 0.31.0
+- **Validación:** Pydantic 2.9.0
+- **Data Processing:**
+  - pandas 2.2.3
+  - numpy 2.1.3
+  - scipy 1.14.1
+  - openpyxl 3.1.5
+  - xlsxwriter 3.2.0
+
+### Pendiente de Implementar
+- **Autenticación:** JWT (python-jose, passlib)
+- **Base de Datos:** PostgreSQL + SQLAlchemy + Alembic
+- **Cloud Storage:** Supabase (mencionado en conversaciones previas)
+
+## 🗂️ Estructura del Frontend
+
+### Componentes Principales
+
+#### Navegación y Layout
+- [Sidebar.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/Sidebar.tsx) - Barra lateral de navegación
+- [Header.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/Header.tsx) - Encabezado de la aplicación
+- [StatusBar.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/StatusBar.tsx) - Barra de estado
+
+#### Vistas Principales
+- [Home.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/Home.tsx) - Página de inicio
+- [DataPreprocessing.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/DataPreprocessing.tsx) - Módulo de preprocesamiento
+- [DescriptiveStats.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/DescriptiveStats.tsx) - Módulo de estadística descriptiva
+
+#### Componentes de Datos
+- [DataTable.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/DataTable.tsx) - Tabla de datos con paginación
+- [FileUploadZone.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/FileUploadZone.tsx) - Zona de carga de archivos
+- [SheetSelectionModal.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/SheetSelectionModal.tsx) - Selector de hojas Excel
+- [DataExplorer.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/DataExplorer.tsx) - Explorador de datos
+
+#### Módulo de Estadística Descriptiva (stats/)
+- [DescriptiveStatsHub.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/DescriptiveStatsHub.tsx) - Hub principal
+- [TablaInteligenteView.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/TablaInteligenteView.tsx) - Tabla inteligente (62KB - componente complejo)
+- [CorrelacionesView.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/CorrelacionesView.tsx) - Vista de correlaciones
+- [TablasFrecuenciaView.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/TablasFrecuenciaView.tsx) - Tablas de frecuencia
+- [TablasContingenciaView.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/TablasContingenciaView.tsx) - Tablas de contingencia
+- [TablaResumenView.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/TablaResumenView.tsx) - Tabla resumen
+- [ActionToolbar.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/ActionToolbar.tsx) - Barra de acciones
+
+#### Módulo de Limpieza (cleaning/)
+- 7 archivos para diferentes operaciones de limpieza
+
+#### AI Components
+- [AIInsightCard.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/AIInsightCard.tsx) - Tarjeta de insights con IA
+- [ConfigurationPanel.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/ConfigurationPanel.tsx) - Panel de configuración
+
+### Contexto Global
+
+[DataContext.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/context/DataContext.tsx) - Gestión de estado global:
+
+```typescript
+interface DataContextType {
+    sessionId: string | null;
+    setSessionId: (id: string | null) => void;
+    data: DataRow[];
+    setData: (data: DataRow[]) => void;
+    columns: string[];
+    setColumns: (columns: string[]) => void;
+    totalRows: number;
+    healthReport: DatasetHealthReport | null;
+    isLoading: boolean;
+    error: string | null;
+    refreshData: (skip?: number, limit?: number) => Promise<void>;
+    refreshHealthReport: () => Promise<void>;
+}
+```
+
+**Funcionalidades clave:**
+- Persistencia de `sessionId` en localStorage
+- Auto-recuperación en caso de sesión expirada (404)
+- Gestión de columnas, datos y reporte de salud
+- Paginación de datos
+
+### Servicios API
+
+[stats.ts](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/api/stats.ts) - Servicio de estadística:
+- [fetchDescriptiveStats()](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/api/stats.ts#14-46) - Análisis estadístico completo
+- [fetchUnivariateStats()](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/api/stats.ts#47-71) - Análisis univariado
+- [fetchTable1Stats()](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/api/stats.ts#72-93) - Generación de Tabla 1 con agrupación
+
+### Tipos TypeScript
+
+[api.ts](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/types/api.ts) - 315 líneas de interfaces:
+- Dataset metadata
+- Upload (multi-sheet Excel support)
+- Descriptive statistics
+- Data cleaning & quality
+- Null handling operations
+- Duplicate removal
+- Column operations
+- Undo/versioning
+
+## 🗂️ Estructura del Backend
+
+### Arquitectura en Capas
+
+```
+app/
+├── api/v1/
+│   ├── endpoints/
+│   │   ├── upload.py        # Carga de archivos (CSV/Excel multi-sheet)
+│   │   ├── data.py          # Obtención de datos con paginación
+│   │   ├── stats.py         # Estadística descriptiva
+│   │   ├── cleaning.py      # Operaciones de limpieza
+│   │   └── ...
+│   └── api.py               # Router principal
+│
+├── services/
+│   ├── upload_service.py        # Lógica de carga
+│   ├── descriptive_service.py   # Cálculos estadísticos
+│   ├── cleaning_service.py      # Limpieza de datos
+│   └── ...
+│
+├── schemas/
+│   ├── upload.py            # Modelos Pydantic para upload
+│   ├── stats.py             # Modelos para estadística
+│   ├── cleaning.py          # Modelos para limpieza
+│   ├── data.py              # Modelos para datos
+│   └── base.py              # Schemas base
+│
+├── core/
+│   ├── config.py            # Configuración (Pydantic Settings)
+│   └── errors.py            # Manejo centralizado de errores
+│
+└── internal/
+    └── data_manager.py      # Gestión de sesiones (singleton)
+```
+
+### Principios de Diseño
+✅ **Separation of Concerns** - Routers solo manejan HTTP, servicios la lógica  
+✅ **Type Safety** - Type hints estrictos en todo el código  
+✅ **Robust Error Handling** - Excepciones personalizadas con respuestas estandarizadas  
+✅ **Stateful Sessions** - DataFrames en memoria con UUID y TTL  
+✅ **Extensibility** - Principio Open-Closed para agregar features
+
+### DataManager
+
+**Ubicación:** [app/internal/data_manager.py](file:///Users/preciosdeliquidacion/Documents/Biometric/backend/app/internal/data_manager.py)
+
+**Características:**
+- Patrón Singleton para almacenamiento centralizado
+- Operaciones thread-safe
+- Expiración automática de sesiones (TTL)
+- Identificación con UUID
+- **Sistema de versionado** para undo/redo
+- Metadata de valores nulos intencionales
+
+**Métodos principales:**
+```python
+- create_session(df, filename) -> str
+- get_dataframe(session_id) -> pd.DataFrame
+- update_dataframe(session_id, df)
+- create_version(session_id, df, description) -> int
+- undo(session_id) -> pd.DataFrame
+- get_history(session_id) -> List[dict]
+- cleanup_expired_sessions() -> int
+```
+
+## 🔌 API Endpoints
+
+### Base URL: `http://localhost:8000`
+
+### Upload
+
+#### POST `/api/v1/upload`
+Carga archivos CSV o Excel (multi-sheet)
+
+**Respuestas:**
+1. **Single sheet / CSV** → `status: 'ready'` con `session_id`
+2. **Multi-sheet Excel** → `status: 'selection_required'` con `temp_id` y `sheets[]`
+
+#### POST `/api/v1/upload/select-sheet`
+Selecciona hojas de Excel y genera `session_id`
+
+### Data
+
+#### GET `/api/v1/data?session_id={id}&skip={n}&limit={m}`
+Obtiene datos paginados con columnas
+
+**Response:**
+```json
+{
+  "success": true,
+  "session_id": "uuid",
+  "total_rows": 1000,
+  "returned_rows": 50,
+  "data": [...],
+  "columns": ["col1", "col2", ...]
+}
+```
+
+### Stats
+
+#### POST `/api/v1/stats/descriptive`
+Análisis estadístico descriptivo
+
+**Request:**
+```json
+{
+  "session_id": "uuid",
+  "columns": ["age", "height"],
+  "group_by": null,
+  "include_normality": true,
+  "include_outliers": true,
+  "include_ci": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "statistics": {
+    "age": {
+      "count": 100,
+      "mean": 45.5,
+      "median": 44.0,
+      "std": 12.3,
+      "variance": 151.29,
+      "min": 18.0,
+      "max": 75.0,
+      "q1": 35.0,
+      "q3": 56.0,
+      "iqr": 21.0,
+      "skewness": 0.12,
+      "kurtosis": -0.45
+    }
+  }
+}
+```
+
+### Cleaning
+
+#### GET `/api/v1/cleaning/quality?session_id={id}`
+Reporte de salud del dataset
+
+**Response:**
+```json
+{
+  "success": true,
+  "report": {
+    "total_rows": 1000,
+    "total_columns": 10,
+    "overall_completeness": 95.5,
+    "total_anomalies": 23,
+    "duplicate_rows": 5,
+    "columns": {
+      "age": {
+        "completeness": 98.5,
+        "outlier_count": 3,
+        "status": "ok",
+        "suggestion": "..."
+      }
+    }
+  }
+}
+```
+
+#### POST `/api/v1/cleaning/simulate-null`
+Simula manejo de nulos (preview sin modificar)
+
+#### POST `/api/v1/cleaning/handle-null`
+Aplica manejo de nulos (crea versión)
+
+**Métodos:** `drop`, `mean`, `median`, `mode`, `ffill`, `bfill`, `constant`, `custom_value`, `date_interpolation`
+
+#### POST `/api/v1/cleaning/remove-duplicates`
+Elimina duplicados
+
+#### POST `/api/v1/cleaning/change-column-type`
+Cambia tipo de columna
+
+#### POST `/api/v1/cleaning/filter-columns`
+Filtra columnas
+
+#### POST `/api/v1/cleaning/delete-rows`
+Elimina filas por índice
+
+### Missing Values Studio (PENDIENTE - Endpoints definidos)
+
+> [!IMPORTANT]
+> Los siguientes endpoints están documentados en [MISSING_VALUES_ENDPOINTS.md](file:///Users/preciosdeliquidacion/Documents/Biometric/backend/MISSING_VALUES_ENDPOINTS.md) pero **NO ESTÁN IMPLEMENTADOS** aún.
+
+- `POST /api/v1/cleaning/missing/preview` - Previsualización de acciones batch
+- `POST /api/v1/cleaning/missing/apply` - Aplicar acciones batch
+- `POST /api/v1/cleaning/undo` - Deshacer última operación
+- `GET /api/v1/cleaning/history` - Obtener historial de versiones
+- `GET /api/v1/cleaning/intentional` - Metadata de nulos intencionales
+
+### Versioning & Undo
+
+El sistema cuenta con versionado completo en el backend (DataManager), pero los endpoints REST para Missing Values Studio están pendientes de implementación.
+
+## 📊 Módulos Funcionales
+
+### 1. Home (Inicio)
+- Landing page con tarjetas de módulos
+- Navegación a preprocesamiento y estadística
+
+### 2. Data Preprocessing (Preprocesamiento)
+
+**Componentes:**
+- File Upload Zone (CSV/Excel multi-sheet)
+- Data Table (tabla interactiva con paginación)
+- Data Explorer
+- Missing Values Studio (🚧 **PENDIENTE**)
+
+**Funcionalidades implementadas:**
+✅ Carga de archivos CSV/Excel  
+✅ Selector de hojas múltiples  
+✅ Visualización de datos con paginación  
+✅ Reporte de salud del dataset  
+✅ Manejo de nulos individual (con simulación)  
+✅ Eliminación de duplicados  
+✅ Cambio de tipo de columnas  
+✅ Filtrado de columnas  
+✅ Eliminación de filas  
+
+**Funcionalidades PENDIENTES:**
+🚧 Missing Values Studio completo (batch operations)  
+🚧 Undo/Redo UI  
+🚧 Historial de versiones UI  
+🚧 Descarga de dataset limpio  
+🚧 Descarga de reporte de auditoría  
+
+### 3. Descriptive Statistics (Estadística Descriptiva)
+
+**Estado actual:** ✅ **Diseño completo, lógica PENDIENTE**
+
+**Componentes:**
+- [DescriptiveStatsHub.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/stats/DescriptiveStatsHub.tsx) - Hub con tabs
+- **Tabla Inteligente** - Análisis automático completo (62KB)
+- **Correlaciones** - Matrices y heatmaps
+- **Tablas de Frecuencia** - Distribuciones
+- **Tablas de Contingencia** - Análisis cruzado
+- **Tabla Resumen** - Overview general
+- Panel de configuración con selección de variables
+
+**Integración con backend:**
+✅ Conexión al endpoint `/api/v1/stats/descriptive`  
+✅ Context API con `columns` desde upload  
+✅ Auto-recuperación de columnas en refresh  
+🚧 Lógica de cálculo pendiente en componentes  
+
+### 4. Otros Módulos (PENDIENTES)
+
+> [!WARNING]
+> Mencionados en conversaciones previas pero NO implementados:
+
+- **Inferencia Estadística** (Pruebas de hipótesis)
+- **Análisis de Concordancia** (Kappa de Cohen, CCI)
+- **Análisis de Supervivencia** (Kaplan-Meier, Cox)
+- **Diagnóstico de Pruebas** (Sensibilidad, especificidad, ROC)
+
+## 🔑 Flujo de Datos Completo
+
+### 1. Upload de Archivo
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant FE as Frontend
+    participant BE as Backend
+    participant DM as DataManager
+
+    U->>FE: Selecciona archivo
+    FE->>BE: POST /upload (multipart)
+    BE->>BE: Parse CSV/Excel
+    alt Multi-sheet Excel
+        BE->>FE: status: selection_required
+        FE->>U: Muestra modal de selección
+        U->>FE: Selecciona hojas
+        FE->>BE: POST /upload/select-sheet
+    end
+    BE->>DM: create_session(df, filename)
+    DM-->>BE: session_id (UUID)
+    BE->>FE: session_id + metadata + columns
+    FE->>FE: Guarda en DataContext + localStorage
+```
+
+### 2. Navegación a Estadística Descriptiva
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant FE as Frontend
+    participant DC as DataContext
+    participant BE as Backend
+
+    U->>FE: Click en "Estadística Descriptiva"
+    FE->>DC: Obtiene sessionId y columns
+    alt columns vacías pero sessionId existe
+        FE->>BE: GET /api/v1/data/columns?session_id
+        BE-->>FE: columns[]
+        FE->>DC: setColumns(columns)
+    end
+    FE->>FE: Renderiza ConfigurationPanel con checkboxes
+    U->>FE: Selecciona variables y opciones
+    U->>FE: Click "Generar"
+    FE->>BE: POST /stats/descriptive
+    BE-->>FE: statistics object
+    FE->>FE: Renderiza resultados en tabs
+```
+
+### 3. Limpieza de Datos
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant FE as Frontend
+    participant BE as Backend
+    participant DM as DataManager
+
+    U->>FE: Click "Limpiar Nulos"
+    FE->>BE: POST /cleaning/simulate-null
+    BE->>DM: get_dataframe(session_id)
+    BE->>BE: Simula sin modificar
+    BE-->>FE: Preview + impact metrics
+    FE->>U: Muestra comparación
+    U->>FE: Confirma aplicar
+    FE->>BE: POST /cleaning/handle-null
+    BE->>DM: create_version(df)
+    DM-->>BE: version_id
+    BE->>BE: Aplica cambios
+    BE->>DM: update_dataframe(df_clean)
+    BE-->>FE: Success + rows_affected
+    FE->>FE: refreshData()
+```
+
+## 🛠️ Configuración
+
+### Backend `.env`
+
+```env
+# Application
+APP_NAME=Biometric API
+APP_VERSION=0.1.0
+DEBUG=True
+
+# CORS
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
+
+# File Upload
+MAX_UPLOAD_SIZE_MB=50
+ALLOWED_EXTENSIONS=[".csv", ".xlsx", ".xls"]
+
+# Session Management
+SESSION_TIMEOUT_MINUTES=60
+```
+
+### Frontend Environment
+
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+## 🚀 Cómo Ejecutar
+
+### Backend
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # En Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+API disponible en: `http://localhost:8000`  
+Documentación: `http://localhost:8000/docs`
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+App disponible en: `http://localhost:5173`
+
+## 📝 Estado Actual del Proyecto
+
+### ✅ Completado
+
+- [x] Arquitectura backend en capas (FastAPI)
+- [x] Sistema de sesiones con UUID + TTL
+- [x] Upload CSV/Excel multi-sheet
+- [x] Paginación de datos
+- [x] DataContext con persistencia
+- [x] Reporte de salud del dataset
+- [x] Operaciones básicas de limpieza
+- [x] Sistema de versionado en DataManager
+- [x] Endpoint de estadística descriptiva
+- [x] Componentes UI completos para estadística
+- [x] Auto-recuperación de sesión expirada
+
+### 🚧 En Progreso / Pendiente
+
+#### Alta Prioridad
+- [ ] **Implementar lógica de cálculo en componentes de estadística**
+- [ ] **Missing Values Studio endpoints** (código ya documentado)
+- [ ] **Undo/Redo UI completo**
+- [ ] **Descarga de dataset limpio + audit report**
+
+#### Media Prioridad
+- [ ] Autenticación JWT + protección de rutas
+- [ ] Base de datos PostgreSQL + SQLAlchemy
+- [ ] Integración con Supabase
+- [ ] Tests unitarios e integración
+
+#### Baja Prioridad
+- [ ] Módulos adicionales de estadística (inferencia, supervivencia)
+- [ ] AI insights con interpretación automática
+- [ ] Exportación a múltiples formatos (PDF, LaTeX)
+
+## 🏷️ Convenciones de Código
+
+### Frontend
+- **Componentes:** PascalCase ([DataTable.tsx](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/components/DataTable.tsx))
+- **Hooks:** camelCase con prefijo [use](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/context/DataContext.tsx#142-149) ([useDataContext](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/context/DataContext.tsx#142-149))
+- **Tipos:** PascalCase con sufijo descriptivo ([ColumnQuality](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/types/api.ts#129-143), [QualityStatus](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/types/api.ts#122-123))
+- **Servicios:** camelCase ([fetchDescriptiveStats](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/api/stats.ts#14-46))
+
+### Backend
+- **Archivos:** snake_case ([descriptive_service.py](file:///Users/preciosdeliquidacion/Documents/Biometric/backend/app/services/descriptive_service.py))
+- **Clases:** PascalCase (`DescriptiveService`)
+- **Funciones:** snake_case (`get_dataframe`)
+- **Schemas Pydantic:** PascalCase ([DescriptiveStatsRequest](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/types/api.ts#83-87))
+
+## 📚 Documentación Adicional
+
+- [backend/README.md](file:///Users/preciosdeliquidacion/Documents/Biometric/backend/README.md) - Arquitectura backend detallada
+- [backend/MISSING_VALUES_ENDPOINTS.md](file:///Users/preciosdeliquidacion/Documents/Biometric/backend/MISSING_VALUES_ENDPOINTS.md) - Endpoints pendientes
+- [frontend/src/Attributions.md](file:///Users/preciosdeliquidacion/Documents/Biometric/frontend/src/Attributions.md) - Atribuciones de diseño
+
+## 🎯 Próximos Pasos Sugeridos
+
+1. **Implementar lógica en componentes de estadística** - El diseño está completo, falta conectar con cálculos reales
+2. **Agregar endpoints de Missing Values Studio** - Código ya documentado en [MISSING_VALUES_ENDPOINTS.md](file:///Users/preciosdeliquidacion/Documents/Biometric/backend/MISSING_VALUES_ENDPOINTS.md)
+3. **Implementar UI de Undo/Redo** - Backend ya soporta versionado
+4. **Agregar descarga de archivos** - Excel limpio + reporte TXT
+5. **Tests** - Unitarios (pytest) e integración (React Testing Library)
+
+---
+
+**Última actualización:** 2026-01-04  
+**Mantenido por:** Equipo Biometric

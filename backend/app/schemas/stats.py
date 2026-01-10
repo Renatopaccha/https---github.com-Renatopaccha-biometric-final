@@ -1,0 +1,511 @@
+"""
+Pydantic schemas for statistical analysis operations.
+"""
+
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, validator
+
+from app.schemas.base import BaseResponse
+
+
+# =============================================================================
+# NUEVOS MODELOS AVANZADOS
+# =============================================================================
+
+class NormalityTest(BaseModel):
+    """Resultados de pruebas de normalidad."""
+    
+    shapiro_statistic: Optional[float] = Field(None, description="Estadístico Shapiro-Wilk")
+    shapiro_p_value: Optional[float] = Field(None, description="P-valor Shapiro-Wilk")
+    kolmogorov_statistic: Optional[float] = Field(None, description="Estadístico Kolmogorov-Smirnov")
+    kolmogorov_p_value: Optional[float] = Field(None, description="P-valor Kolmogorov-Smirnov")
+    anderson_statistic: Optional[float] = Field(None, description="Estadístico Anderson-Darling")
+    anderson_critical_values: Optional[List[float]] = Field(None, description="Valores críticos Anderson")
+    conclusion: str = Field(..., description="Conclusión: 'Normal', 'No Normal', 'Indeterminado'")
+    interpretation: str = Field(..., description="Interpretación textual del resultado")
+
+
+class OutlierAnalysis(BaseModel):
+    """Análisis de valores atípicos (outliers)."""
+    
+    iqr_outliers_count: int = Field(..., description="Cantidad de outliers por método IQR")
+    iqr_outliers_indices: List[int] = Field(default_factory=list, description="Índices de outliers IQR")
+    zscore_outliers_count: int = Field(..., description="Cantidad de outliers por Z-Score")
+    zscore_outliers_indices: List[int] = Field(default_factory=list, description="Índices de outliers Z-Score")
+    mad_outliers_count: int = Field(..., description="Cantidad de outliers por MAD")
+    mad_outliers_indices: List[int] = Field(default_factory=list, description="Índices de outliers MAD")
+    iqr_lower_bound: Optional[float] = Field(None, description="Límite inferior IQR")
+    iqr_upper_bound: Optional[float] = Field(None, description="Límite superior IQR")
+
+
+class ConfidenceInterval(BaseModel):
+    """Intervalo de confianza al 95%."""
+    
+    lower: float = Field(..., description="Límite inferior")
+    upper: float = Field(..., description="Límite superior")
+    confidence_level: float = Field(0.95, description="Nivel de confianza")
+
+
+class GroupStatistics(BaseModel):
+    """Estadísticas descriptivas para un grupo específico."""
+    
+    n: int = Field(..., description="Tamaño de la muestra")
+    mean_sd: str = Field(..., description="Media ± Desviación Estándar (formato: '45.2 ± 12.3')")
+    median_iqr: str = Field(..., description="Mediana (IQR) (formato: '44.0 (35.0-56.0)')")
+    min_max: str = Field(..., description="Rango (formato: '18.0 - 75.0')")
+
+
+class Table1Row(BaseModel):
+    """Fila de la Tabla 1 comparativa entre grupos."""
+    
+    variable: str = Field(..., description="Nombre de la variable")
+    total: Optional[str] = Field(None, description="Estadística total (opcional)")
+    groups: Dict[str, str] = Field(..., description="Estadísticas por grupo {'Control': '45.2 ± 12.3', ...}")
+    p_value: str = Field(..., description="P-valor formateado ('0.042', '<0.001', '-')")
+    test_used: str = Field(..., description="Test estadístico usado ('T-Student', 'Mann-Whitney', etc.)")
+    is_significant: bool = Field(..., description="True si p < 0.05")
+
+
+class SummaryStatRow(BaseModel):
+    """Fila para la Tabla Resumen de estadística descriptiva."""
+
+    variable: str = Field(..., description="Nombre de la variable")
+    n: int = Field(..., description="Cantidad de observaciones no nulas")
+    media: Optional[float] = Field(None, description="Media (o prevalencia para binarias)")
+    mediana: Optional[float] = Field(None, description="Mediana")
+    desvio_estandar: Optional[float] = Field(None, description="Desvío estándar")
+    minimo: Optional[float] = Field(None, description="Mínimo")
+    maximo: Optional[float] = Field(None, description="Máximo")
+    q1: Optional[float] = Field(None, description="Primer cuartil (25%)")
+    q3: Optional[float] = Field(None, description="Tercer cuartil (75%)")
+    is_binary: bool = Field(default=False, description="True si es variable binaria (Si/No)")
+    is_normal: Optional[bool] = Field(None, description="True si pasa test Shapiro-Wilk (p > 0.05)")
+    normality_p_value: Optional[float] = Field(None, description="P-value del test de normalidad Shapiro-Wilk")
+
+
+# =============================================================================
+# MODELOS ACTUALIZADOS
+# =============================================================================
+
+class DescriptiveStatsRequest(BaseModel):
+    """Request model for descriptive statistics calculation."""
+    
+    session_id: str = Field(..., description="Session ID of the uploaded dataset")
+    columns: Optional[List[str]] = Field(
+        default=None,
+        description="Specific columns to analyze. If None, all numeric columns are analyzed."
+    )
+    
+    # NUEVO: Parámetro de agrupación
+    group_by: Optional[str] = Field(
+        default=None,
+        description="Column name to group by and generate Table 1 comparison"
+    )
+    
+    # NUEVO: Opciones de análisis
+    include_normality: bool = Field(
+        default=True,
+        description="Include normality tests (Shapiro, KS, Anderson)"
+    )
+    include_outliers: bool = Field(
+        default=True,
+        description="Include outlier detection (IQR, Z-Score, MAD)"
+    )
+    include_ci: bool = Field(
+        default=True,
+        description="Include 95% confidence intervals"
+    )
+    
+    @validator('session_id')
+    def validate_session_id(cls, v: str) -> str:
+        """Ensure session_id is not empty."""
+        if not v or not v.strip():
+            raise ValueError("session_id cannot be empty")
+        return v.strip()
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "columns": ["age", "bmi", "glucose"],
+                "group_by": "treatment_group",
+                "include_normality": True,
+                "include_outliers": True,
+                "include_ci": True
+            }
+        }
+
+
+class SummaryStatsRequest(BaseModel):
+    """Request model for summary statistics table."""
+
+    session_id: str = Field(..., description="Session ID of the uploaded dataset")
+    variables: List[str] = Field(..., description="List of variables to summarize")
+
+    @validator('session_id')
+    def validate_session_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("session_id cannot be empty")
+        return v.strip()
+
+
+class SummaryInsight(BaseModel):
+    """Insight automático generado del análisis."""
+    
+    type: str = Field(..., description="Tipo: success, info, warning, error")
+    title: str = Field(..., description="Título del insight")
+    description: str = Field(..., description="Descripción detallada")
+
+
+# =============================================================================
+# FREQUENCY TABLES
+# =============================================================================
+
+class FrequencyRow(BaseModel):
+    """Una fila de tabla de frecuencias."""
+    
+    categoria: str = Field(..., description="Nombre de la categoría")
+    frecuencia: int = Field(..., description="Conteo de observaciones")
+    porcentaje: float = Field(..., description="Porcentaje del total")
+    porcentaje_acumulado: float = Field(..., description="Porcentaje acumulado")
+
+
+class FrequencyTableResult(BaseModel):
+    """Resultado de tabla de frecuencias para una variable."""
+    
+    variable: str = Field(..., description="Nombre de la variable analizada")
+    rows: List[FrequencyRow] = Field(..., description="Filas de frecuencias")
+    total: int = Field(..., description="Total de observaciones")
+
+
+class FrequencyRequest(BaseModel):
+    """Request para cálculo de frecuencias."""
+    
+    session_id: str = Field(..., description="Session ID del dataset")
+    variables: List[str] = Field(..., description="Variables categóricas a analizar")
+    segment_by: Optional[str] = Field(None, description="Variable opcional para segmentar resultados")
+
+
+class FrequencyResponse(BaseResponse):
+    """Response con tablas de frecuencias segmentadas."""
+    
+    session_id: str = Field(..., description="Session ID del dataset")
+    segments: List[str] = Field(..., description="Lista de segmentos (ej: ['General', 'Masculino', 'Femenino'])")
+    tables: Dict[str, List[FrequencyTableResult]] = Field(..., description="Tablas por segmento")
+    segment_by: Optional[str] = Field(None, description="Variable usada para segmentar")
+
+
+# =============================================================================
+# CONTINGENCY TABLES (CROSSTAB)
+# =============================================================================
+
+class ContingencyCellData(BaseModel):
+    """Datos de una celda en la tabla de contingencia."""
+    
+    count: int = Field(..., description="Frecuencia absoluta (N)")
+    row_percent: float = Field(..., description="Porcentaje respecto al total de la fila")
+    col_percent: float = Field(..., description="Porcentaje respecto al total de la columna")
+    total_percent: float = Field(..., description="Porcentaje respecto al total global")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "count": 15,
+                "row_percent": 25.0,
+                "col_percent": 10.0,
+                "total_percent": 5.0
+            }
+        }
+
+
+class ContingencyTableRequest(BaseModel):
+    """Request para tabla de contingencia (crosstab)."""
+    
+    session_id: str = Field(..., description="Session ID del dataset")
+    row_variable: str = Field(..., description="Variable categórica para filas")
+    col_variable: str = Field(..., description="Variable categórica para columnas")
+    segment_by: Optional[str] = Field(None, description="Variable opcional para segmentar resultados")
+    
+    @validator('session_id')
+    def validate_session_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("session_id cannot be empty")
+        return v.strip()
+    
+    @validator('row_variable', 'col_variable')
+    def validate_variables(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Variable name cannot be empty")
+        return v.strip()
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "row_variable": "gender",
+                "col_variable": "treatment_group",
+                "segment_by": "age_group"
+            }
+        }
+
+
+class ContingencyTableResult(BaseModel):
+    """Resultado de tabla de contingencia para un segmento individual."""
+    
+    row_variable: str = Field(..., description="Variable usada para filas")
+    col_variable: str = Field(..., description="Variable usada para columnas")
+    row_categories: List[str] = Field(..., description="Categorías de la variable fila")
+    col_categories: List[str] = Field(..., description="Categorías de la variable columna")
+    cells: Dict[str, Dict[str, ContingencyCellData]] = Field(
+        ..., 
+        description="Datos de celdas organizados como {row_category: {col_category: CellData}}"
+    )
+    row_totals: Dict[str, ContingencyCellData] = Field(
+        ..., 
+        description="Totales marginales por fila"
+    )
+    col_totals: Dict[str, ContingencyCellData] = Field(
+        ..., 
+        description="Totales marginales por columna"
+    )
+    grand_total: int = Field(..., description="Total global (N)")
+
+
+class ContingencyTableResponse(BaseResponse):
+    """Response con tabla de contingencia completa (con soporte para segmentación)."""
+    
+    session_id: str = Field(..., description="Session ID del dataset")
+    
+    # Nuevos campos para segmentación
+    segments: List[str] = Field(..., description="Lista de segmentos (ej: ['General'] o ['Masculino', 'Femenino'])")
+    tables: Dict[str, ContingencyTableResult] = Field(..., description="Tablas por segmento")
+    segment_by: Optional[str] = Field(None, description="Variable usada para segmentar")
+    
+    # Campos legacy (mantener para compatibilidad backward - contienen datos del primer segmento)
+    row_variable: str = Field(..., description="Variable usada para filas")
+    col_variable: str = Field(..., description="Variable usada para columnas")
+    row_categories: List[str] = Field(..., description="Categorías de la variable fila")
+    col_categories: List[str] = Field(..., description="Categorías de la variable columna")
+    cells: Dict[str, Dict[str, ContingencyCellData]] = Field(
+        ..., 
+        description="Datos de celdas organizados como {row_category: {col_category: CellData}}"
+    )
+    row_totals: Dict[str, ContingencyCellData] = Field(
+        ..., 
+        description="Totales marginales por fila"
+    )
+    col_totals: Dict[str, ContingencyCellData] = Field(
+        ..., 
+        description="Totales marginales por columna"
+    )
+    grand_total: int = Field(..., description="Total global (N)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Contingency table calculated successfully",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "row_variable": "gender",
+                "col_variable": "treatment_group",
+                "row_categories": ["Male", "Female"],
+                "col_categories": ["Control", "Treatment"],
+                "cells": {
+                    "Male": {
+                        "Control": {
+                            "count": 25,
+                            "row_percent": 50.0,
+                            "col_percent": 45.45,
+                            "total_percent": 25.0
+                        },
+                        "Treatment": {
+                            "count": 25,
+                            "row_percent": 50.0,
+                            "col_percent": 54.55,
+                            "total_percent": 25.0
+                        }
+                    },
+                    "Female": {
+                        "Control": {
+                            "count": 30,
+                            "row_percent": 60.0,
+                            "col_percent": 54.55,
+                            "total_percent": 30.0
+                        },
+                        "Treatment": {
+                            "count": 20,
+                            "row_percent": 40.0,
+                            "col_percent": 45.45,
+                            "total_percent": 20.0
+                        }
+                    }
+                },
+                "row_totals": {
+                    "Male": {
+                        "count": 50,
+                        "row_percent": 100.0,
+                        "col_percent": 50.0,
+                        "total_percent": 50.0
+                    },
+                    "Female": {
+                        "count": 50,
+                        "row_percent": 100.0,
+                        "col_percent": 50.0,
+                        "total_percent": 50.0
+                    }
+                },
+                "col_totals": {
+                    "Control": {
+                        "count": 55,
+                        "row_percent": 55.0,
+                        "col_percent": 100.0,
+                        "total_percent": 55.0
+                    },
+                    "Treatment": {
+                        "count": 45,
+                        "row_percent": 45.0,
+                        "col_percent": 100.0,
+                        "total_percent": 45.0
+                    }
+                },
+                "grand_total": 100
+            }
+        }
+
+
+class SummaryStatsResponse(BaseResponse):
+    """Response model for summary statistics table."""
+
+    session_id: str = Field(..., description="Session ID of the analyzed dataset")
+    data: List[SummaryStatRow] = Field(..., description="Summary statistics rows")
+    analyzed_variables: List[str] = Field(..., description="Variables included in the summary")
+    insights: List[SummaryInsight] = Field(default=[], description="Auto-generated insights")
+
+
+class ColumnStatistics(BaseModel):
+    """Statistical metrics for a single column."""
+    
+    # Campos básicos (existentes)
+    count: int = Field(..., description="Number of non-null observations")
+    missing: int = Field(..., description="Number of missing (null) values")
+    mean: Optional[float] = Field(None, description="Arithmetic mean")
+    median: Optional[float] = Field(None, description="Median (50th percentile)")
+    std: Optional[float] = Field(None, description="Standard deviation")
+    variance: Optional[float] = Field(None, description="Variance")
+    min: Optional[float] = Field(None, description="Minimum value")
+    max: Optional[float] = Field(None, description="Maximum value")
+    q1: Optional[float] = Field(None, description="First quartile (25th percentile)")
+    q3: Optional[float] = Field(None, description="Third quartile (75th percentile)")
+    iqr: Optional[float] = Field(None, description="Interquartile range (Q3 - Q1)")
+    skewness: Optional[float] = Field(None, description="Measure of asymmetry")
+    kurtosis: Optional[float] = Field(None, description="Measure of tailedness")
+    
+    # NUEVOS campos avanzados
+    sem: Optional[float] = Field(None, description="Standard error of the mean")
+    cv: Optional[float] = Field(None, description="Coefficient of variation (%)")
+    range: Optional[float] = Field(None, description="Range (max - min)")
+    ci_95: Optional[ConfidenceInterval] = Field(None, description="95% confidence interval")
+    
+    # Percentiles adicionales
+    p5: Optional[float] = Field(None, description="5th percentile")
+    p10: Optional[float] = Field(None, description="10th percentile")
+    p90: Optional[float] = Field(None, description="90th percentile")
+    p95: Optional[float] = Field(None, description="95th percentile")
+    
+    # Análisis avanzados
+    normality: Optional[NormalityTest] = Field(None, description="Normality test results")
+    outliers: Optional[OutlierAnalysis] = Field(None, description="Outlier detection results")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "count": 100,
+                "missing": 5,
+                "mean": 45.5,
+                "median": 44.0,
+                "std": 12.3,
+                "variance": 151.29,
+                "min": 18.0,
+                "max": 75.0,
+                "q1": 35.0,
+                "q3": 56.0,
+                "iqr": 21.0,
+                "skewness": 0.12,
+                "kurtosis": -0.45,
+                "sem": 1.23,
+                "cv": 27.03,
+                "range": 57.0,
+                "ci_95": {"lower": 43.1, "upper": 47.9, "confidence_level": 0.95},
+                "p5": 22.5,
+                "p10": 28.0,
+                "p90": 63.0,
+                "p95": 68.5,
+                "normality": {
+                    "shapiro_statistic": 0.987,
+                    "shapiro_p_value": 0.432,
+                    "conclusion": "Normal",
+                    "interpretation": "Los datos siguen una distribución normal (p > 0.05)"
+                },
+                "outliers": {
+                    "iqr_outliers_count": 3,
+                    "iqr_outliers_indices": [12, 45, 78],
+                    "zscore_outliers_count": 2,
+                    "mad_outliers_count": 1,
+                    "iqr_lower_bound": 3.5,
+                    "iqr_upper_bound": 87.5
+                }
+            }
+        }
+
+
+class DescriptiveStatsResponse(BaseResponse):
+    """Response model for descriptive statistics."""
+    
+    session_id: str = Field(..., description="Session ID of the analyzed dataset")
+    statistics: Dict[str, ColumnStatistics] = Field(
+        ...,
+        description="Statistical metrics for each analyzed column"
+    )
+    analyzed_columns: List[str] = Field(..., description="List of columns that were analyzed")
+    
+    # NUEVOS campos para Tabla 1
+    table1_data: Optional[List[Table1Row]] = Field(
+        None,
+        description="Table 1 comparative data between groups (only if group_by is provided)"
+    )
+    group_variable: Optional[str] = Field(None, description="Variable used for grouping")
+    groups: Optional[List[str]] = Field(None, description="List of unique group names")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Descriptive statistics calculated successfully",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "analyzed_columns": ["age", "bmi"],
+                "statistics": {
+                    "age": {
+                        "count": 100,
+                        "missing": 0,
+                        "mean": 45.5,
+                        "median": 44.0,
+                        "std": 12.3,
+                        # ... más campos
+                    }
+                },
+                "table1_data": [
+                    {
+                        "variable": "age (Media ± DE)",
+                        "groups": {
+                            "Control (n=50)": "43.2 ± 11.5",
+                            "Treatment (n=50)": "47.8 ± 13.1"
+                        },
+                        "p_value": "0.042",
+                        "test_used": "T-Student",
+                        "is_significant": True
+                    }
+                ],
+                "group_variable": "treatment_group",
+                "groups": ["Control", "Treatment"]
+            }
+        }

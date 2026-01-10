@@ -1,0 +1,8 @@
+# Storage directories for DataManager
+# These directories store pickled session and temporary data
+
+# Sessions are stored as {session_id}.pkl
+# Temp files are stored as {temp_id}.pkl
+
+# DO NOT commit .pkl files to version control
+*.pkl
