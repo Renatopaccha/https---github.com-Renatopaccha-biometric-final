@@ -24,6 +24,9 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = `${BASE_URL}/api/v1`;
+
 interface CleaningToolbarProps {
     sessionId: string;
     onDiagnosticToggle: () => void;
@@ -294,7 +297,7 @@ function NullCleaningDialog({
 
         setIsSubmitting(true);
         try {
-            const response = await fetch('http://localhost:8000/api/v1/cleaning/nulls', {
+            const response = await fetch(`${API_BASE_URL}/cleaning/nulls`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId, column, method }),
@@ -398,7 +401,7 @@ function DuplicateRemovalDialog({
     const handleSubmit = async () => {
         setIsSubmitting(true);
         try {
-            const response = await fetch('http://localhost:8000/api/v1/cleaning/duplicates', {
+            const response = await fetch(`${API_BASE_URL}/cleaning/duplicates`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId, keep: 'first' }),

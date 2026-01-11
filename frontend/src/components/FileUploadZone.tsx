@@ -6,7 +6,8 @@ interface FileUploadZoneProps {
   onUploadSuccess: (response: UploadResponse) => void;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = `${BASE_URL}/api/v1`;
 
 export function FileUploadZone({ onUploadSuccess }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -99,8 +100,8 @@ export function FileUploadZone({ onUploadSuccess }: FileUploadZoneProps) {
     <div className="bg-white rounded-lg border border-gray-200 p-8">
       <div
         className={`border-2 border-dashed rounded-lg p-16 text-center transition-all ${isDragging
-            ? 'border-teal-500 bg-teal-50'
-            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+          ? 'border-teal-500 bg-teal-50'
+          : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
           }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -138,8 +139,8 @@ export function FileUploadZone({ onUploadSuccess }: FileUploadZoneProps) {
             onClick={handleButtonClick}
             disabled={isUploading}
             className={`px-5 py-2.5 rounded-md transition-colors text-sm ${isUploading
-                ? 'bg-gray-400 text-white cursor-not-allowed'
-                : 'bg-teal-600 text-white hover:bg-teal-700'
+              ? 'bg-gray-400 text-white cursor-not-allowed'
+              : 'bg-teal-600 text-white hover:bg-teal-700'
               }`}
           >
             {isUploading ? 'Procesando...' : 'Seleccionar Archivo'}

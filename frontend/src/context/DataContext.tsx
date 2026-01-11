@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import type { DatasetHealthReport, DataRow } from '../types/api';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
+
 interface DataContextType {
     sessionId: string | null;
     setSessionId: (id: string | null) => void;
@@ -57,7 +59,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setError(null);
         try {
             const response = await fetch(
-                `http://localhost:8000/api/v1/data?session_id=${sessionId}&skip=${skip}&limit=${limit}`
+                `${API_BASE_URL}/data?session_id=${sessionId}&skip=${skip}&limit=${limit}`
             );
 
             // AUTO-RECUPERACIÓN: Si la sesión no existe (404), reiniciar app
@@ -95,7 +97,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         try {
             const response = await fetch(
-                `http://localhost:8000/api/v1/cleaning/quality?session_id=${sessionId}`
+                `${API_BASE_URL}/cleaning/quality?session_id=${sessionId}`
             );
 
             // AUTO-RECUPERACIÓN: Si la sesión no existe (404), reiniciar app
