@@ -55,10 +55,12 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true,
   },
   preview: {
-    allowedHosts: ["beneficial-delight-production-2f80.up.railway.app"],
+    allowedHosts: [
+      "beneficial-delight-production-2f80.up.railway.app",
+      "localhost"
+    ],
     host: true,
     port: 4173,
   },
