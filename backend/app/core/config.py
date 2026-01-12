@@ -35,7 +35,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
-        "https://beneficial-delight-production-2f80.up.railway.app",
+        "https://https-githubcom-renatopaccha-biometric-final-production.up.railway.app",
     ]
     
     # File upload settings

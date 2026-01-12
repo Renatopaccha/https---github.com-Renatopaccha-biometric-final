@@ -58,7 +58,7 @@ export default defineConfig({
   },
   preview: {
     allowedHosts: [
-      "beneficial-delight-production-2f80.up.railway.app",
+      "https-githubcom-renatopaccha-biometric-final-production.up.railway.app",
       "localhost"
     ],
     host: true,
