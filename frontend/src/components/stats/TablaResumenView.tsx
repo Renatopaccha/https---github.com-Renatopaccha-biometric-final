@@ -97,6 +97,7 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [contextSent, setContextSent] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     async function fetchSummary() {
@@ -201,26 +202,45 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
   };
 
   const handleContinueToChat = async () => {
-    if (!onNavigateToChat) return;
+    if (!onNavigateToChat || !sessionId) return;
 
-    // Si aún no hemos enviado el contexto porque el usuario no pidió interpretación,
-    // enviarlo silenciosamente antes de navegar para que el chat tenga memoria.
-    if (!contextSent && sessionId) {
-      try {
-        const tableContext = getOptimizedTableContext(data, totalRows);
-        await sendChatMessage({
-          session_id: sessionId,
-          message: `He generado la siguiente tabla resumen. Úsala como contexto para nuestras próximas conversaciones:\n\n${tableContext}`,
-          history: []
-        });
-        setContextSent(true);
-      } catch (err) {
-        console.warn("Could not pre-send context to chat:", err);
-        // Continuamos de todas formas
-      }
+    try {
+      setIsNavigating(true);
+
+      // 1. Preparar el contexto completo
+      const tableContext = getOptimizedTableContext(data, totalRows);
+      const interpretationContext = analysisResult
+        ? `\n\nInterpretación Previa Realizada:\n${analysisResult}`
+        : '\n\n(El usuario aún no ha solicitado una interpretación automática)';
+
+      const handoffMessage = `**SYSTEM CONTEXT HANDOFF**
+    
+Estás recibiendo el contexto de la sesión actual de "Tabla Resumen" para asistir al usuario.
+    
+DATOS ESTRUCTURADOS:
+${tableContext}
+${interpretationContext}
+
+INSTRUCCIÓN:
+El usuario ha sido transferido al chat principal. Mantén este contexto en memoria para responder preguntas sobre estas variables. Saluda brevemente confirmando que tienes los datos.`;
+
+      // 2. Enviar al backend (esperar confirmación)
+      await sendChatMessage({
+        session_id: sessionId,
+        message: handoffMessage,
+        history: []
+      });
+
+      setContextSent(true);
+
+    } catch (error) {
+      console.error("Error transfiriendo contexto:", error);
+      // Continuamos de todas formas para no bloquear al usuario
+    } finally {
+      // 3. Navegar siempre, incluso si falló el pre-calentamiento
+      setIsNavigating(false);
+      onNavigateToChat();
     }
-
-    onNavigateToChat();
   };
 
   return (
@@ -437,6 +457,7 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
               onAIInterpretation={handleAIInterpretation}
               onContinueToChat={handleContinueToChat}
               isAnalyzing={isAnalyzing}
+              isNavigating={isNavigating}
             />
           </div>
         </div>
