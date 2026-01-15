@@ -8,6 +8,7 @@ import type { SummaryStatRow, SummaryInsight } from '../../types/stats';
 
 interface TablaResumenViewProps {
   onBack: () => void;
+  onNavigateToChat?: () => void;
 }
 
 function formatNumber(value: number | null | undefined, digits = 1) {
@@ -31,14 +32,13 @@ function NormalityBadge({ isNormal, pValue }: { isNormal: boolean | null; pValue
   if (isNormal === null) {
     return <span className="text-xs text-slate-400 italic">N/A</span>;
   }
-  
+
   return (
     <div className="relative group inline-block">
-      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium cursor-help ${
-        isNormal 
-          ? 'bg-green-100 text-green-800 border border-green-200' 
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium cursor-help ${isNormal
+          ? 'bg-green-100 text-green-800 border border-green-200'
           : 'bg-amber-100 text-amber-800 border border-amber-200'
-      }`}>
+        }`}>
         {isNormal ? '✓ Normal' : '⚠ Asimétrica'}
       </span>
       {/* Tooltip */}
@@ -73,7 +73,7 @@ function InsightIcon({ type }: { type: string }) {
 function CompletenessBar({ value, max }: { value: number; max: number }) {
   const percentage = max > 0 ? Math.round((value / max) * 100) : 0;
   const color = percentage >= 90 ? 'bg-green-500' : percentage >= 70 ? 'bg-amber-500' : 'bg-red-500';
-  
+
   return (
     <div className="flex items-center gap-2">
       <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -127,7 +127,7 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
       'Variable': row.variable,
       'Tipo': row.is_binary ? 'Binaria (Si/No)' : 'Numérica',
       'N': row.n,
-      'Media / Prevalencia': row.is_binary 
+      'Media / Prevalencia': row.is_binary
         ? (row.media !== null ? `${(row.media * 100).toFixed(1)}%` : '-')
         : row.media,
       'Mediana': row.is_binary ? '-' : row.mediana,
@@ -189,7 +189,7 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
       {/* Content */}
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          
+
           {/* Panel de Insights */}
           {insights.length > 0 && !isLoading && (
             <div className="bg-gradient-to-br from-teal-50 to-blue-50 rounded-xl border border-teal-200 shadow-sm">
@@ -202,13 +202,12 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {insights.slice(0, 6).map((insight, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`flex items-start gap-3 bg-white rounded-lg p-3 border ${
-                        insight.type === 'error' ? 'border-red-200' :
-                        insight.type === 'warning' ? 'border-amber-200' :
-                        insight.type === 'success' ? 'border-green-200' : 'border-blue-200'
-                      }`}
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-3 bg-white rounded-lg p-3 border ${insight.type === 'error' ? 'border-red-200' :
+                          insight.type === 'warning' ? 'border-amber-200' :
+                            insight.type === 'success' ? 'border-green-200' : 'border-blue-200'
+                        }`}
                     >
                       <InsightIcon type={insight.type} />
                       <div className="flex-1 min-w-0">
@@ -272,11 +271,10 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-900 text-center font-mono">{row.n}</td>
                       {/* Media y DE: resaltadas si es Normal */}
-                      <td className={`px-6 py-4 text-sm text-center font-mono ${
-                        row.is_binary ? '' : 
-                        row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' : 
-                        row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
-                      }`}>
+                      <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
+                          row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' :
+                            row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
                         {row.is_binary ? (
                           <span className="text-purple-700 font-semibold">{formatPrevalence(row.media)}</span>
                         ) : (
@@ -284,34 +282,30 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                         )}
                       </td>
                       {/* Mediana: resaltada si NO es Normal */}
-                      <td className={`px-6 py-4 text-sm text-center font-mono ${
-                        row.is_binary ? '' :
-                        row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' : 
-                        row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
-                      }`}>
+                      <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
+                          row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
+                            row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
                         {row.is_binary ? '-' : formatNumber(row.mediana)}
                       </td>
                       {/* DE: resaltada si es Normal */}
-                      <td className={`px-6 py-4 text-sm text-center font-mono ${
-                        row.is_binary ? '' :
-                        row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' : 
-                        row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
-                      }`}>
+                      <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
+                          row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' :
+                            row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
                         {row.is_binary ? '-' : formatNumber(row.desvio_estandar)}
                       </td>
                       {/* Mín/Máx: resaltados si NO es Normal */}
-                      <td className={`px-6 py-4 text-sm text-center font-mono ${
-                        row.is_binary ? '' :
-                        row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' : 
-                        row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
-                      }`}>
+                      <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
+                          row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
+                            row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
                         {row.is_binary ? '-' : formatNumber(row.minimo)}
                       </td>
-                      <td className={`px-6 py-4 text-sm text-center font-mono ${
-                        row.is_binary ? '' :
-                        row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' : 
-                        row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
-                      }`}>
+                      <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
+                          row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
+                            row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
                         {row.is_binary ? '-' : formatNumber(row.maximo)}
                       </td>
                     </tr>
@@ -322,9 +316,9 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
 
             <div className="px-8 py-4 bg-gradient-to-b from-slate-50 to-slate-100 border-t border-slate-200">
               <p className="text-xs text-slate-600 leading-relaxed">
-                <strong>Guía de interpretación:</strong> Test de normalidad Shapiro-Wilk (α=0.05). 
-                <span className="text-teal-700 font-medium"> Celdas teal</span> = métricas recomendadas para distribución normal (Media, DE). 
-                <span className="text-orange-700 font-medium"> Celdas naranja</span> = métricas recomendadas para distribución asimétrica (Mediana, Rangos). 
+                <strong>Guía de interpretación:</strong> Test de normalidad Shapiro-Wilk (α=0.05).
+                <span className="text-teal-700 font-medium"> Celdas teal</span> = métricas recomendadas para distribución normal (Media, DE).
+                <span className="text-orange-700 font-medium"> Celdas naranja</span> = métricas recomendadas para distribución asimétrica (Mediana, Rangos).
                 Variables <span className="text-purple-700 font-medium">binarias</span> muestran prevalencia.
               </p>
             </div>
