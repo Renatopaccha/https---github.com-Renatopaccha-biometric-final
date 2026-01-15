@@ -8,7 +8,7 @@ import { TablaInteligenteView } from './stats/TablaInteligenteView';
 
 export type StatsView = 'hub' | 'tabla-resumen' | 'frecuencia' | 'contingencia' | 'correlaciones' | 'tabla-inteligente';
 
-export function DescriptiveStats({ onNavigate }: { onNavigate?: (view: any) => void }) {
+export function DescriptiveStats({ onNavigate }: { onNavigate?: (view: any, chatId?: string) => void }) {
   const [currentView, setCurrentView] = useState<StatsView>('hub');
 
   const renderView = () => {
@@ -18,7 +18,7 @@ export function DescriptiveStats({ onNavigate }: { onNavigate?: (view: any) => v
       case 'tabla-resumen':
         return <TablaResumenView
           onBack={() => setCurrentView('hub')}
-          onNavigateToChat={() => onNavigate && onNavigate('asistente')}
+          onNavigateToChat={(chatId) => onNavigate && onNavigate('asistente', chatId)}
         />;
       case 'frecuencia':
         return <TablasFrecuenciaView onBack={() => setCurrentView('hub')} />;

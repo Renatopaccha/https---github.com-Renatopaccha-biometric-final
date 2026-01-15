@@ -1,0 +1,20 @@
+{
+  "id": "533ced04-07b9-4b81-9029-598ff4a5a23b",
+  "session_id": "7ff14754-a088-4aba-9964-d47332fd803a",
+  "title": "**SYSTEM CONTEXT HANDOFF**\n    \nEstás recibiendo e...",
+  "created_at": "2026-01-15T08:36:09.697879",
+  "updated_at": "2026-01-15T08:36:17.228116",
+  "messages": [
+    {
+      "role": "user",
+      "content": "**SYSTEM CONTEXT HANDOFF**\n    \nEstás recibiendo el contexto de la sesión actual de \"Tabla Resumen\" para asistir al usuario.\n    \nDATOS ESTRUCTURADOS:\nResumen Estadístico del Dataset (Variables Relevantes):\n- Hipertension: Prevalencia 15.8%\n- Diabetes: Prevalencia 2.7%\n- Gota: Prevalencia 3.7%\n- Edad (años cump): Media 38.1, DE 10.9 (No Normal)\n- Peso (Kg): Media 67.6, DE 10.6 (No Normal)\n- Talla (cm): Media 163.5, DE 12.3 (No Normal)\n- Talla (m): Media 1.6, DE 0.1 (No Normal)\n- Colesterol: Media 180.6, DE 24.9 (No Normal)\n- Cintura: Media 87.0, DE 11.3 (No Normal)\n- TenSis: Media 112.3, DE 14.0 (No Normal)\n- TenDias: Media 79.0, DE 10.7 (No Normal)\n\n\n\n(El usuario aún no ha solicitado una interpretación automática)\n\nINSTRUCCIÓN:\nEl usuario ha sido transferido al chat principal. Mantén este contexto en memoria para responder preguntas sobre estas variables. Saluda brevemente confirmando que tienes los datos.",
+      "timestamp": "2026-01-15T08:36:17.225928"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! He recibido y procesado el resumen estadístico de tu dataset en la app Biometric. Tengo en memoria los detalles sobre las prevalencias de hipertensión, diabetes y gota, así como las medias, desviaciones estándar y la importante observación de la **no normalidad** para variables como Edad, Peso, Talla, Colesterol, Cintura, TenSis y TenDias.\n\nEstoy listo para ayudarte a explorar estos datos y guiarte hacia descubrimientos más profundos. ¿Qué te gustaría analizar o qué pregunta tienes en mente para empezar?",
+      "timestamp": "2026-01-15T08:36:17.227203"
+    }
+  ],
+  "model": "gemini-2.5-flash"
+}

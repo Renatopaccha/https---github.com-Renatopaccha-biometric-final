@@ -10,7 +10,7 @@ import type { SummaryStatRow, SummaryInsight } from '../../types/stats';
 
 interface TablaResumenViewProps {
   onBack: () => void;
-  onNavigateToChat?: () => void;
+  onNavigateToChat?: (chatId?: string) => void;
 }
 
 function formatNumber(value: number | null | undefined, digits = 1) {
@@ -98,6 +98,7 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [contextSent, setContextSent] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSummary() {
@@ -183,6 +184,7 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
 
       const response = await sendChatMessage({
         session_id: sessionId || undefined,
+        chat_id: activeChatId || undefined, // Reuse existing chat if available
         message: prompt,
         history: [] // No necesitamos historial previo para esto
       });
@@ -190,6 +192,11 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
       if (response.success) {
         setAnalysisResult(response.response);
         setContextSent(true);
+
+        // Capture chat_id for reuse
+        if (response.chat_id) {
+          setActiveChatId(response.chat_id);
+        }
       } else {
         setError("No se pudo obtener la interpretación de IA.");
       }
@@ -203,6 +210,8 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
 
   const handleContinueToChat = async () => {
     if (!onNavigateToChat || !sessionId) return;
+
+    let finalChatId = activeChatId;
 
     try {
       setIsNavigating(true);
@@ -224,12 +233,19 @@ ${interpretationContext}
 INSTRUCCIÓN:
 El usuario ha sido transferido al chat principal. Mantén este contexto en memoria para responder preguntas sobre estas variables. Saluda brevemente confirmando que tienes los datos.`;
 
-      // 2. Enviar al backend (esperar confirmación)
-      await sendChatMessage({
+      // 2. Enviar al backend (esperar confirmación) - reuse activeChatId
+      const response = await sendChatMessage({
         session_id: sessionId,
+        chat_id: activeChatId || undefined,
         message: handoffMessage,
         history: []
       });
+
+      // Capture final chat_id
+      if (response.chat_id) {
+        finalChatId = response.chat_id;
+        setActiveChatId(response.chat_id);
+      }
 
       setContextSent(true);
 
@@ -239,7 +255,7 @@ El usuario ha sido transferido al chat principal. Mantén este contexto en memor
     } finally {
       // 3. Navegar siempre, incluso si falló el pre-calentamiento
       setIsNavigating(false);
-      onNavigateToChat();
+      onNavigateToChat(finalChatId || undefined);
     }
   };
 

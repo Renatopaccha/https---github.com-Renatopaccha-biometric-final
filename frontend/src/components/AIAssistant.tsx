@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ChatSidebar } from './ai-chat/ChatSidebar';
 import { ChatHeader } from './ai-chat/ChatHeader';
 import { MessageList } from './ai-chat/MessageList';
@@ -5,7 +6,7 @@ import { ChatInputArea } from './ai-chat/ChatInputArea';
 import { useAIChat } from '../hooks/useAIChat';
 import { useDataContext } from '../context/DataContext';
 
-export function AIAssistant() {
+export function AIAssistant({ initialChatId }: { initialChatId?: string }) {
   const { sessionId } = useDataContext();
   const {
     messages,
@@ -17,6 +18,16 @@ export function AIAssistant() {
     startNewChat,
     deleteChatSession
   } = useAIChat();
+
+  // Auto-select chat if initialChatId is provided
+  useEffect(() => {
+    if (initialChatId && chatSessions.some(s => s.id === initialChatId)) {
+      // Auto-select the chat if not already selected
+      if (chatId !== initialChatId) {
+        loadChatHistory(initialChatId);
+      }
+    }
+  }, [initialChatId, chatSessions, chatId, loadChatHistory]);
 
   const handleNewChat = () => {
     startNewChat();

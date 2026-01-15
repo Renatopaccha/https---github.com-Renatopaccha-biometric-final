@@ -10,6 +10,17 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [currentView, setCurrentView] = useState<'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente'>('inicio');
+  const [selectedChatId, setSelectedChatId] = useState<string | undefined>(undefined);
+
+  const handleNavigation = (view: string, chatId?: string) => {
+    if (chatId) {
+      setSelectedChatId(chatId);
+    } else if (view !== 'asistente') {
+      // Clear selected chat when navigating away from assistant
+      setSelectedChatId(undefined);
+    }
+    setCurrentView(view as any);
+  };
 
   return (
     <div className="flex h-screen bg-white">
@@ -17,7 +28,7 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         activeView={currentView}
-        onNavigate={setCurrentView}
+        onNavigate={(view) => handleNavigation(view)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -26,8 +37,8 @@ export default function App() {
         <main className="flex-1 overflow-auto bg-gray-50">
           {currentView === 'inicio' && <Home />}
           {currentView === 'preprocesamiento' && <DataPreprocessing />}
-          {currentView === 'estadistica' && <DescriptiveStats onNavigate={setCurrentView} />}
-          {currentView === 'asistente' && <AIAssistant />}
+          {currentView === 'estadistica' && <DescriptiveStats onNavigate={handleNavigation} />}
+          {currentView === 'asistente' && <AIAssistant initialChatId={selectedChatId} />}
         </main>
       </div>
     </div>

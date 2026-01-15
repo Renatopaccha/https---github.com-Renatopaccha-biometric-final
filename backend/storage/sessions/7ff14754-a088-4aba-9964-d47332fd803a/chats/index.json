@@ -1,22 +1,8 @@
 [
   {
-    "id": "5411f813-e296-4f0c-a09e-2934388138ea",
-    "title": "Analiza la siguiente tabla de estadísticas descrip...",
-    "timestamp": "2026-01-15T08:04:02.188195",
-    "message_count": 2,
-    "model": "gemini-2.5-flash"
-  },
-  {
-    "id": "5c2f2a01-c6cc-4d12-8817-35cb35429062",
-    "title": "Analiza la siguiente tabla de estadísticas descrip...",
-    "timestamp": "2026-01-15T08:16:41.765928",
-    "message_count": 2,
-    "model": "gemini-2.5-flash"
-  },
-  {
-    "id": "f683f071-5193-4a62-bdc4-a7183db66a4a",
+    "id": "533ced04-07b9-4b81-9029-598ff4a5a23b",
     "title": "**SYSTEM CONTEXT HANDOFF**\n    \nEstás recibiendo e...",
-    "timestamp": "2026-01-15T08:17:09.237698",
+    "timestamp": "2026-01-15T08:36:17.227211",
     "message_count": 2,
     "model": "gemini-2.5-flash"
   }
