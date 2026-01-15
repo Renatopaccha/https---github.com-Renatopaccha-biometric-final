@@ -163,7 +163,7 @@ class AIService:
     
     def _decode_attachment(self, attachment: FileAttachment) -> Tuple[bytes, str]:
         """
-        Decode Base64 attachment.
+        Decode Base64 attachment with robust handling of data URI prefixes.
         
         Args:
             attachment: FileAttachment with Base64 data
@@ -172,11 +172,30 @@ class AIService:
             Tuple of (file_bytes, filename)
         """
         try:
-            file_bytes = base64.b64decode(attachment.data)
+            # Clean Base64 data - remove data URI prefix if present
+            # Format: "data:mime/type;base64,ACTUAL_BASE64_DATA"
+            base64_data = attachment.data
+            
+            if "base64," in base64_data:
+                # Extract only the Base64 part after the comma
+                base64_data = base64_data.split("base64,")[1]
+            elif "," in base64_data and base64_data.startswith("data:"):
+                # Handle other data URI formats
+                base64_data = base64_data.split(",", 1)[1]
+            
+            # Decode Base64 to bytes
+            file_bytes = base64.b64decode(base64_data)
+            
+            print(f"[DEBUG] Successfully decoded attachment '{attachment.name}', size: {len(file_bytes)} bytes")
+            
             return file_bytes, attachment.name
+            
         except Exception as e:
+            error_msg = f"Failed to decode attachment '{attachment.name}': {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[DEBUG] Base64 data preview: {attachment.data[:100]}...")
             raise BiometricException(
-                message=f"Failed to decode attachment '{attachment.name}': {str(e)}",
+                message=error_msg,
                 status_code=400
             )
     
@@ -282,8 +301,15 @@ class AIService:
             Markdown-formatted table (limited to first 50 rows)
         """
         try:
+            print(f"[DEBUG] Processing Excel file: {filename}, size: {len(file_content)} bytes")
+            
             # Read Excel file
             df = pd.read_excel(io.BytesIO(file_content))
+            
+            print(f"[DEBUG] Excel loaded: {len(df)} rows, {len(df.columns)} columns")
+            
+            if df.empty:
+                return f"📊 **Archivo Excel adjunto: {filename}**\n\n⚠️ El archivo está vacío."
             
             # Limit rows for performance
             max_rows = 50
@@ -296,16 +322,24 @@ class AIService:
             
             # Convert to markdown
             markdown = f"📊 **Archivo Excel adjunto: {filename}**\n\n"
+            markdown += f"**Dimensiones:** {len(df)} filas × {len(df.columns)} columnas\n\n"
             markdown += df_preview.to_markdown(index=False)
             markdown += truncation_note
             
             return markdown
             
+        except PermissionError:
+            error_msg = f"❌ No se pudo leer el archivo Excel '{filename}': archivo protegido con contraseña o sin permisos."
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
+        except pd.errors.EmptyDataError:
+            error_msg = f"❌ El archivo Excel '{filename}' está vacío o corrupto."
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
         except Exception as e:
-            raise BiometricException(
-                message=f"Failed to process Excel file '{filename}': {str(e)}",
-                status_code=400
-            )
+            error_msg = f"❌ Error al procesar el archivo Excel '{filename}': {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
     
     def _process_csv(self, file_content: bytes, filename: str) -> str:
         """
@@ -319,8 +353,15 @@ class AIService:
             Markdown-formatted table (limited to first 50 rows)
         """
         try:
+            print(f"[DEBUG] Processing CSV file: {filename}, size: {len(file_content)} bytes")
+            
             # Read CSV file
             df = pd.read_csv(io.BytesIO(file_content))
+            
+            print(f"[DEBUG] CSV loaded: {len(df)} rows, {len(df.columns)} columns")
+            
+            if df.empty:
+                return f"📊 **Archivo CSV adjunto: {filename}**\n\n⚠️ El archivo está vacío."
             
             # Limit rows for performance
             max_rows = 50
@@ -333,16 +374,24 @@ class AIService:
             
             # Convert to markdown
             markdown = f"📊 **Archivo CSV adjunto: {filename}**\n\n"
+            markdown += f"**Dimensiones:** {len(df)} filas × {len(df.columns)} columnas\n\n"
             markdown += df_preview.to_markdown(index=False)
             markdown += truncation_note
             
             return markdown
             
+        except pd.errors.EmptyDataError:
+            error_msg = f"❌ El archivo CSV '{filename}' está vacío."
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
+        except pd.errors.ParserError as e:
+            error_msg = f"❌ Error al parsear el archivo CSV '{filename}': formato inválido. {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
         except Exception as e:
-            raise BiometricException(
-                message=f"Failed to process CSV file '{filename}': {str(e)}",
-                status_code=400
-            )
+            error_msg = f"❌ Error al procesar el archivo CSV '{filename}': {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
     
     def _process_pdf(self, file_content: bytes, filename: str) -> str:
         """
@@ -357,22 +406,31 @@ class AIService:
         """
         if not PDF_SUPPORT:
             raise BiometricException(
-                message="PDF processing not available. PyPDF2 library not installed.",
+                message="❌ Procesamiento de PDF no disponible. La librería PyPDF2 no está instalada.",
                 status_code=400
             )
         
         try:
+            print(f"[DEBUG] Processing PDF file: {filename}, size: {len(file_content)} bytes")
+            
             pdf_reader = PdfReader(io.BytesIO(file_content))
             
+            print(f"[DEBUG] PDF loaded: {len(pdf_reader.pages)} pages")
+            
             text_parts = [f"📄 **Archivo PDF adjunto: {filename}**\n"]
-            text_parts.append(f"Páginas: {len(pdf_reader.pages)}\n\n")
+            text_parts.append(f"**Páginas:** {len(pdf_reader.pages)}\n\n")
             
             # Extract text from all pages (limit to first 10 for performance)
             max_pages = 10
+            pages_with_text = 0
             for i, page in enumerate(pdf_reader.pages[:max_pages]):
                 page_text = page.extract_text()
                 if page_text.strip():
                     text_parts.append(f"**Página {i+1}:**\n{page_text}\n\n")
+                    pages_with_text += 1
+            
+            if pages_with_text == 0:
+                text_parts.append("⚠️ No se pudo extraer texto del PDF. Puede ser un PDF escaneado (imagen) o protegido.")
             
             if len(pdf_reader.pages) > max_pages:
                 text_parts.append(f"\n*(Mostrando primeras {max_pages} páginas de {len(pdf_reader.pages)} totales)*")
@@ -380,10 +438,9 @@ class AIService:
             return "\n".join(text_parts)
             
         except Exception as e:
-            raise BiometricException(
-                message=f"Failed to process PDF file '{filename}': {str(e)}",
-                status_code=400
-            )
+            error_msg = f"❌ Error al procesar el archivo PDF '{filename}': {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            raise BiometricException(message=error_msg, status_code=400)
     
     async def chat(
         self,

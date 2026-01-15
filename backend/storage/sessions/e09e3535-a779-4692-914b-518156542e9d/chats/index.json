@@ -1,15 +1,8 @@
 [
   {
-    "id": "de165ed3-fff0-4511-98bd-50a6caeb4de1",
-    "title": "Nueva conversación",
-    "timestamp": "2026-01-14T20:44:21.225228",
-    "message_count": 0,
-    "model": "gemini-2.5-flash"
-  },
-  {
-    "id": "9e123470-9a0d-4047-aab0-31a73eb78336",
-    "title": "cuantos pacientes debo levantar encuestas si quier...",
-    "timestamp": "2026-01-14T20:57:42.665670",
+    "id": "9a1d0800-86ce-4e39-9c8e-184d10effa82",
+    "title": "analiza mi base decodificada y mira si puedo hscer...",
+    "timestamp": "2026-01-14T21:13:50.930177",
     "message_count": 2,
     "model": "gemini-2.5-flash"
   }

@@ -71,6 +71,12 @@ async def chat_with_ai(request: ChatRequest) -> ChatResponse:
                 request.chat_id
             )
         
+        # Log attachment info
+        if request.attachments:
+            print(f"[DEBUG] Received {len(request.attachments)} attachment(s):")
+            for att in request.attachments:
+                print(f"  - {att.name} ({att.mime_type}), Base64 size: {len(att.data)} chars")
+        
         # Call AI service
         result = await ai_service.chat(
             message=request.message,
@@ -119,18 +125,22 @@ async def chat_with_ai(request: ChatRequest) -> ChatResponse:
         )
         
     except BiometricException as e:
+        # Return file processing errors to user
+        print(f"[ERROR] BiometricException in chat endpoint: {e.message}")
         return ChatResponse(
             success=False,
-            response="Lo siento, no pude procesar tu solicitud.",
+            response=e.message,  # Return the specific error message
             session_context_used=False,
             files_processed=0,
             error=e.message
         )
     
     except HTTPException:
+        # Re-raise HTTP exceptions
         raise
     
     except Exception as e:
+        # Catch-all for unexpected errors
         print(f"[ERROR] Unexpected error in chat endpoint: {e}")
         return ChatResponse(
             success=False,
