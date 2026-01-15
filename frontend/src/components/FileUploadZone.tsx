@@ -28,12 +28,29 @@ export function FileUploadZone({ onUploadSuccess }: FileUploadZoneProps) {
         body: formData,
       });
 
+      // Get response text first to handle both JSON and non-JSON responses
+      const text = await response.text();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error al subir el archivo');
+        // Try to parse as JSON to get detailed error
+        try {
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.detail || errorData.message || 'Error al subir el archivo');
+        } catch (jsonError) {
+          // If not JSON, show generic error with status
+          console.error('Non-JSON error response:', text);
+          throw new Error(`Error del servidor (${response.status}): ${response.statusText}`);
+        }
       }
 
-      const data: UploadResponse = await response.json();
+      // Parse success response
+      let data: UploadResponse;
+      try {
+        data = JSON.parse(text);
+      } catch (jsonError) {
+        console.error('Non-JSON success response:', text);
+        throw new Error('Respuesta inválida del servidor');
+      }
 
       // Pass the complete response to parent
       // Parent will decide what to do based on status ('ready' or 'selection_required')

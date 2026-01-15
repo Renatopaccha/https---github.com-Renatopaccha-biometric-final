@@ -56,6 +56,13 @@ async def chat_with_ai(
     ```
     """
     try:
+        # Check if AI service is available
+        if ai_service is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI Assistant not configured. Please contact administrator to set GEMINI_API_KEY."
+            )
+        
         # Parse conversation history
         try:
             history_list = json.loads(history)

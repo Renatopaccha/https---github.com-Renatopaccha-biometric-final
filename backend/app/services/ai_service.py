@@ -408,5 +408,14 @@ class AIService:
             }
 
 
-# Singleton instance
-ai_service = AIService()
+
+# Singleton instance - only instantiate if API key is configured
+ai_service = None
+try:
+    if settings.gemini_api_key:
+        ai_service = AIService()
+except Exception as e:
+    # AI service not available, but don't crash the server
+    print(f"Warning: AI Service not initialized: {e}")
+    ai_service = None
+

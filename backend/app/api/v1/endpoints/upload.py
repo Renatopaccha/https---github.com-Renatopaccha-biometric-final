@@ -78,6 +78,24 @@ async def upload_dataset(file: UploadFile = File(...)):
             status_code=e.status_code,
             detail=e.message
         )
+    except Exception as e:
+        # Catch any unexpected errors (e.g., missing libraries, corrupted files)
+        error_msg = str(e)
+        
+        # Provide helpful messages for common errors
+        if "xlrd" in error_msg.lower():
+            detail = "Missing xlrd library for .xls files. Please contact support."
+        elif "openpyxl" in error_msg.lower():
+            detail = "Missing openpyxl library for .xlsx files. Please contact support."
+        elif "no module named" in error_msg.lower():
+            detail = f"Server configuration error: {error_msg}"
+        else:
+            detail = f"Unexpected error processing file: {error_msg}"
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=detail
+        )
     
     # SCENARIO 1: Single DataFrame (CSV or single-sheet Excel)
     if not is_multi_sheet:
