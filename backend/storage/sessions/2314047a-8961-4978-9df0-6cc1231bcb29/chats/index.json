@@ -26,5 +26,12 @@
     "timestamp": "2026-01-14T22:01:50.562518",
     "message_count": 2,
     "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "f810b7dc-3e14-4c30-ba94-3e301a3cce21",
+    "title": "Analiza la siguiente tabla de estadísticas descrip...",
+    "timestamp": "2026-01-14T22:12:43.199613",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
   }
 ]

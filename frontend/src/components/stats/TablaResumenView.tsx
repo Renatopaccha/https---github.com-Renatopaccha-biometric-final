@@ -5,6 +5,7 @@ import { ActionToolbar } from './ActionToolbar';
 import { useDataContext } from '../../context/DataContext';
 import { getSummaryStats } from '../../api/stats';
 import { sendChatMessage } from '../../api/ai';
+import { getOptimizedTableContext } from '../../utils/aiContext';
 import type { SummaryStatRow, SummaryInsight } from '../../types/stats';
 
 interface TablaResumenViewProps {
@@ -171,32 +172,13 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
     XLSX.writeFile(workbook, 'Resumen_Estadistico.xlsx');
   };
 
-  const generateTableContext = () => {
-    if (data.length === 0) return "No hay datos disponibles.";
-
-    let context = "Tabla de Estadísticas Descriptivas:\n\n";
-    data.forEach(row => {
-      context += `- Variable: ${row.variable} (${row.is_binary ? 'Binaria' : 'Numérica'})\n`;
-      context += `  N: ${row.n}, Completitud: ${((row.n / totalRows) * 100).toFixed(1)}%\n`;
-      if (row.is_binary) {
-        context += `  Prevalencia: ${(row.media! * 100).toFixed(1)}%\n`;
-      } else {
-        context += `  Media: ${row.media?.toFixed(2)}, Mediana: ${row.mediana?.toFixed(2)}, DE: ${row.desvio_estandar?.toFixed(2)}\n`;
-        context += `  Min: ${row.minimo}, Max: ${row.maximo}\n`;
-        context += `  Normalidad: ${row.is_normal ? 'Sí' : 'No'} (p=${row.normality_p_value?.toFixed(3)})\n`;
-      }
-      context += "\n";
-    });
-    return context;
-  };
-
   const handleAIInterpretation = async () => {
     if (analysisResult || isAnalyzing) return; // Ya existe o está cargando
 
     setIsAnalyzing(true);
     try {
-      const tableContext = generateTableContext();
-      const prompt = `Analiza la siguiente tabla de estadísticas descriptivas y dame 3 hallazgos clave o interpretaciones clínicas/estadísticas breves:\n\n${tableContext}`;
+      const tableContext = getOptimizedTableContext(data, totalRows);
+      const prompt = `Analiza la siguiente tabla de estadísticas descriptivas. Resume en 3 puntos clave los hallazgos más relevantes para un reporte clínico:\n\n${tableContext}`;
 
       const response = await sendChatMessage({
         session_id: sessionId || undefined,
@@ -221,10 +203,11 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
   const handleContinueToChat = async () => {
     if (!onNavigateToChat) return;
 
-    // Si aún no hemos enviado el contexto, enviarlo silenciosamente antes de navegar
+    // Si aún no hemos enviado el contexto porque el usuario no pidió interpretación,
+    // enviarlo silenciosamente antes de navegar para que el chat tenga memoria.
     if (!contextSent && sessionId) {
       try {
-        const tableContext = generateTableContext();
+        const tableContext = getOptimizedTableContext(data, totalRows);
         await sendChatMessage({
           session_id: sessionId,
           message: `He generado la siguiente tabla resumen. Úsala como contexto para nuestras próximas conversaciones:\n\n${tableContext}`,
@@ -453,6 +436,7 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
               onExportExcel={handleExportExcel}
               onAIInterpretation={handleAIInterpretation}
               onContinueToChat={handleContinueToChat}
+              isAnalyzing={isAnalyzing}
             />
           </div>
         </div>
