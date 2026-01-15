@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     
     # AI Assistant settings
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-2.5-flash"
     max_ai_file_size_mb: int = 20
     ai_temperature: float = 0.7
     
