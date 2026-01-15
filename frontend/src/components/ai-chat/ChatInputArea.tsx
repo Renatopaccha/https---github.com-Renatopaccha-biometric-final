@@ -102,7 +102,7 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".docx,.xlsx,.xls,.png,.jpg,.jpeg"
+            accept=".docx,.xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -151,7 +151,7 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
             <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono ml-1">Shift + Enter</kbd> para nueva línea
           </span>
           <span className="text-slate-400">
-            Archivos soportados: Word (.docx), Excel (.xlsx/.xls), Imágenes (.png/.jpg)
+            Archivos soportados: Word (.docx), Excel (.xlsx/.xls), CSV (.csv), PDF (.pdf), Imágenes (.png/.jpg)
           </span>
         </div>
       </div>

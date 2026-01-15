@@ -1,5 +1,13 @@
-import { useState, useCallback } from 'react';
-import { sendChatMessage, ChatMessage as APIChatMessage, ChatResponse } from '../api/ai';
+import { useState, useCallback, useEffect } from 'react';
+import {
+    sendChatMessage,
+    listChatSessions,
+    getChatHistory,
+    deleteChat as deleteChatAPI,
+    ChatMessage as APIChatMessage,
+    ChatResponse,
+    ChatSession
+} from '../api/ai';
 import { useDataContext } from '../context/DataContext';
 
 // Extended message type with ID for UI
@@ -9,34 +17,110 @@ interface ChatMessage extends APIChatMessage {
 
 interface UseAIChatReturn {
     messages: ChatMessage[];
+    chatId: string | null;
+    chatSessions: ChatSession[];
     isLoading: boolean;
     error: string | null;
     sendMessage: (content: string, files?: File[]) => Promise<void>;
     clearChat: () => void;
     retryLastMessage: () => Promise<void>;
+    loadChatHistory: (chatId: string) => Promise<void>;
+    loadChatSessions: () => Promise<void>;
+    startNewChat: () => void;
+    deleteChatSession: (chatId: string) => Promise<void>;
 }
 
 /**
- * Custom hook for managing AI chat interactions.
+ * Custom hook for managing AI chat interactions with persistence.
  * 
  * Features:
  * - Automatic session context injection from DataContext
+ * - Chat persistence and history loading
  * - Optimistic UI updates
  * - Error handling and retry logic
  * - Message history management
  * 
  * @example
- * const { messages, isLoading, sendMessage, clearChat } = useAIChat();
+ * const { messages, chatSessions, sendMessage, loadChatHistory } = useAIChat();
  */
 export function useAIChat(): UseAIChatReturn {
     const { sessionId } = useDataContext();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [chatId, setChatId] = useState<string | null>(null);
+    const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastUserMessage, setLastUserMessage] = useState<{
         content: string;
         files?: File[];
     } | null>(null);
+
+    const loadChatSessions = useCallback(async () => {
+        if (!sessionId) {
+            setChatSessions([]);
+            return;
+        }
+
+        try {
+            const sessions = await listChatSessions(sessionId);
+            setChatSessions(sessions);
+        } catch (err) {
+            console.error('Failed to load chat sessions:', err);
+        }
+    }, [sessionId]);
+
+    // Auto-load chat sessions when sessionId changes
+    useEffect(() => {
+        loadChatSessions();
+    }, [loadChatSessions]);
+
+    const loadChatHistory = useCallback(async (targetChatId: string) => {
+        if (!sessionId) return;
+
+        try {
+            const history = await getChatHistory(sessionId, targetChatId);
+            if (history) {
+                // Convert to UI format with IDs
+                const messagesWithIds: ChatMessage[] = history.messages.map((msg, index) => ({
+                    ...msg,
+                    id: `${targetChatId}-${index}`
+                }));
+
+                setMessages(messagesWithIds);
+                setChatId(targetChatId);
+                setError(null);
+            }
+        } catch (err) {
+            console.error('Failed to load chat history:', err);
+            setError('No se pudo cargar el historial del chat');
+        }
+    }, [sessionId]);
+
+    const startNewChat = useCallback(() => {
+        setMessages([]);
+        setChatId(null);
+        setError(null);
+        setLastUserMessage(null);
+    }, []);
+
+    const deleteChatSession = useCallback(async (targetChatId: string) => {
+        if (!sessionId) return;
+
+        try {
+            const success = await deleteChatAPI(sessionId, targetChatId);
+            if (success) {
+                // Remove from local state
+                setChatSessions(prev => prev.filter(s => s.id !== targetChatId));
+
+                // If we deleted the active chat, start a new one
+                if (chatId === targetChatId) {
+                    startNewChat();
+                }
+            }
+        } catch (err) {
+            console.error('Failed to delete chat:', err);
+        }
+    }, [sessionId, chatId, startNewChat]);
 
     const sendMessage = useCallback(async (content: string, files?: File[]) => {
         if (!content.trim() && (!files || files.length === 0)) {
@@ -62,22 +146,28 @@ export function useAIChat(): UseAIChatReturn {
         setIsLoading(true);
 
         try {
-            // Prepare history without IDs for API (APIchatMessage format)
+            // Prepare history without IDs for API (APIChatMessage format)
             const historyForAPI: APIChatMessage[] = messages.map(msg => ({
                 role: msg.role,
                 content: msg.content,
                 timestamp: msg.timestamp
             }));
 
-            // Call API with session context
+            // Call API with session context, chat_id, and files
             const response: ChatResponse = await sendChatMessage({
                 message: content,
                 session_id: sessionId || undefined,
+                chat_id: chatId || undefined,
                 history: historyForAPI,
                 files: files
             });
 
             if (response.success) {
+                // Update chat_id if this was a new chat
+                if (response.chat_id && !chatId) {
+                    setChatId(response.chat_id);
+                }
+
                 // Add AI response to messages
                 const aiMessage: ChatMessage = {
                     id: (Date.now() + 1).toString(),
@@ -87,6 +177,11 @@ export function useAIChat(): UseAIChatReturn {
                 };
 
                 setMessages(prev => [...prev, aiMessage]);
+
+                // Reload chat sessions to update message counts
+                if (sessionId) {
+                    loadChatSessions();
+                }
 
                 // Log context usage for debugging
                 if (response.session_context_used) {
@@ -126,7 +221,7 @@ export function useAIChat(): UseAIChatReturn {
         } finally {
             setIsLoading(false);
         }
-    }, [sessionId, messages]);
+    }, [sessionId, chatId, messages, loadChatSessions]);
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessage) {
@@ -142,16 +237,23 @@ export function useAIChat(): UseAIChatReturn {
 
     const clearChat = useCallback(() => {
         setMessages([]);
+        setChatId(null);
         setError(null);
         setLastUserMessage(null);
     }, []);
 
     return {
         messages,
+        chatId,
+        chatSessions,
         isLoading,
         error,
         sendMessage,
         clearChat,
-        retryLastMessage
+        retryLastMessage,
+        loadChatHistory,
+        loadChatSessions,
+        startNewChat,
+        deleteChatSession
     };
 }

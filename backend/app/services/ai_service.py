@@ -11,9 +11,17 @@ from PIL import Image
 from docx import Document
 import google.generativeai as genai
 
+try:
+    from PyPDF2 import PdfReader
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
+    print("[WARN] PyPDF2 not installed. PDF processing disabled.")
+
 from app.core.config import settings
 from app.core.errors import BiometricException
 from app.internal.data_manager import data_manager
+from app.schemas.ai import FileAttachment
 
 
 class AIService:
@@ -153,6 +161,25 @@ class AIService:
             # Session might be expired or invalid
             return None
     
+    def _decode_attachment(self, attachment: FileAttachment) -> Tuple[bytes, str]:
+        """
+        Decode Base64 attachment.
+        
+        Args:
+            attachment: FileAttachment with Base64 data
+            
+        Returns:
+            Tuple of (file_bytes, filename)
+        """
+        try:
+            file_bytes = base64.b64decode(attachment.data)
+            return file_bytes, attachment.name
+        except Exception as e:
+            raise BiometricException(
+                message=f"Failed to decode attachment '{attachment.name}': {str(e)}",
+                status_code=400
+            )
+    
     def _validate_file(self, file_content: bytes, filename: str) -> None:
         """
         Validate file size and type.
@@ -173,7 +200,7 @@ class AIService:
             )
         
         # Check extension
-        allowed_extensions = ['.png', '.jpg', '.jpeg', '.docx', '.xlsx', '.xls']
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.docx', '.xlsx', '.xls', '.pdf', '.csv']
         if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
             raise BiometricException(
                 message=f"File type not supported. Allowed: {', '.join(allowed_extensions)}",
@@ -280,12 +307,90 @@ class AIService:
                 status_code=400
             )
     
+    def _process_csv(self, file_content: bytes, filename: str) -> str:
+        """
+        Read CSV file and convert to markdown table.
+        
+        Args:
+            file_content: CSV bytes
+            filename: Original filename
+            
+        Returns:
+            Markdown-formatted table (limited to first 50 rows)
+        """
+        try:
+            # Read CSV file
+            df = pd.read_csv(io.BytesIO(file_content))
+            
+            # Limit rows for performance
+            max_rows = 50
+            if len(df) > max_rows:
+                df_preview = df.head(max_rows)
+                truncation_note = f"\n\n*(Mostrando primeras {max_rows} filas de {len(df)} totales)*"
+            else:
+                df_preview = df
+                truncation_note = ""
+            
+            # Convert to markdown
+            markdown = f"📊 **Archivo CSV adjunto: {filename}**\n\n"
+            markdown += df_preview.to_markdown(index=False)
+            markdown += truncation_note
+            
+            return markdown
+            
+        except Exception as e:
+            raise BiometricException(
+                message=f"Failed to process CSV file '{filename}': {str(e)}",
+                status_code=400
+            )
+    
+    def _process_pdf(self, file_content: bytes, filename: str) -> str:
+        """
+        Extract text from PDF file.
+        
+        Args:
+            file_content: PDF bytes
+            filename: Original filename
+            
+        Returns:
+            Extracted text with formatting
+        """
+        if not PDF_SUPPORT:
+            raise BiometricException(
+                message="PDF processing not available. PyPDF2 library not installed.",
+                status_code=400
+            )
+        
+        try:
+            pdf_reader = PdfReader(io.BytesIO(file_content))
+            
+            text_parts = [f"📄 **Archivo PDF adjunto: {filename}**\n"]
+            text_parts.append(f"Páginas: {len(pdf_reader.pages)}\n\n")
+            
+            # Extract text from all pages (limit to first 10 for performance)
+            max_pages = 10
+            for i, page in enumerate(pdf_reader.pages[:max_pages]):
+                page_text = page.extract_text()
+                if page_text.strip():
+                    text_parts.append(f"**Página {i+1}:**\n{page_text}\n\n")
+            
+            if len(pdf_reader.pages) > max_pages:
+                text_parts.append(f"\n*(Mostrando primeras {max_pages} páginas de {len(pdf_reader.pages)} totales)*")
+            
+            return "\n".join(text_parts)
+            
+        except Exception as e:
+            raise BiometricException(
+                message=f"Failed to process PDF file '{filename}': {str(e)}",
+                status_code=400
+            )
+    
     async def chat(
         self,
         message: str,
         session_id: Optional[str] = None,
         history: List[dict] = None,
-        files: List[Tuple[bytes, str]] = None
+        attachments: List[FileAttachment] = None
     ) -> dict:
         """
         Generate AI response with optional session context and file attachments.
@@ -294,7 +399,7 @@ class AIService:
             message: User's message
             session_id: Optional session ID for DataFrame context
             history: Previous conversation messages
-            files: List of (file_content, filename) tuples
+            attachments: List of FileAttachment objects with Base64 data
             
         Returns:
             Dict with response, context_used flag, and files_processed count
@@ -308,12 +413,15 @@ class AIService:
             # Build system prompt
             system_prompt = self._build_system_prompt(session_context)
             
-            # Process uploaded files
+            # Process uploaded files from Base64 attachments
             file_contents = []
             files_processed = 0
             
-            if files:
-                for file_content, filename in files:
+            if attachments:
+                for attachment in attachments:
+                    # Decode Base64
+                    file_content, filename = self._decode_attachment(attachment)
+                    
                     # Validate file
                     self._validate_file(file_content, filename)
                     
@@ -332,6 +440,16 @@ class AIService:
                     elif filename.lower().endswith(('.xlsx', '.xls')):
                         table = self._process_excel(file_content, filename)
                         message += f"\n\n{table}"
+                        files_processed += 1
+                    
+                    elif filename.lower().endswith('.csv'):
+                        table = self._process_csv(file_content, filename)
+                        message += f"\n\n{table}"
+                        files_processed += 1
+                    
+                    elif filename.lower().endswith('.pdf'):
+                        text = self._process_pdf(file_content, filename)
+                        message += f"\n\n{text}"
                         files_processed += 1
             
             # Build conversation history for context

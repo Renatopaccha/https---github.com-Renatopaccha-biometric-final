@@ -1,52 +1,48 @@
-import { Plus, MessageSquare, Trash2, Edit2 } from 'lucide-react';
-import { useState } from 'react';
-
-interface ChatSession {
-  id: string;
-  title: string;
-  timestamp: string;
-  model: string;
-}
+import { Plus, MessageSquare, Trash2 } from 'lucide-react';
+import { ChatSession } from '../api/ai';
 
 interface ChatSidebarProps {
+  sessions: ChatSession[];
   onNewChat: () => void;
   onSelectChat: (chatId: string) => void;
+  onDeleteChat: (chatId: string) => void;
   activeChatId: string | null;
 }
 
-export function ChatSidebar({ onNewChat, onSelectChat, activeChatId }: ChatSidebarProps) {
-  const [sessions] = useState<ChatSession[]>([
-    {
-      id: '1',
-      title: 'Análisis de correlación IMC',
-      timestamp: 'hace 2 horas',
-      model: 'Gemini Pro'
-    },
-    {
-      id: '2',
-      title: 'Prueba de normalidad datos',
-      timestamp: 'hace 5 horas',
-      model: 'Gemini Pro'
-    },
-    {
-      id: '3',
-      title: 'Interpretación p-valores',
-      timestamp: 'ayer',
-      model: 'Gemini Pro'
-    },
-    {
-      id: '4',
-      title: 'Regresión lineal múltiple',
-      timestamp: 'hace 2 días',
-      model: 'Gemini Pro'
-    },
-    {
-      id: '5',
-      title: 'ANOVA variables categóricas',
-      timestamp: 'hace 3 días',
-      model: 'Gemini Pro'
+export function ChatSidebar({
+  sessions,
+  onNewChat,
+  onSelectChat,
+  onDeleteChat,
+  activeChatId
+}: ChatSidebarProps) {
+  const handleDelete = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('¿Estás seguro de que deseas eliminar esta conversación?')) {
+      onDeleteChat(chatId);
     }
-  ]);
+  };
+
+  // Format timestamp to relative time
+  const formatTimestamp = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'ahora mismo';
+      if (diffMins < 60) return `hace ${diffMins} min`;
+      if (diffHours < 24) return `hace ${diffHours}h`;
+      if (diffDays === 1) return 'ayer';
+      if (diffDays < 7) return `hace ${diffDays} días`;
+      return date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
+    } catch {
+      return timestamp;
+    }
+  };
 
   return (
     <div className="w-full h-full bg-white border-r border-slate-200 flex flex-col">
@@ -70,66 +66,78 @@ export function ChatSidebar({ onNewChat, onSelectChat, activeChatId }: ChatSideb
           </h3>
         </div>
 
-        <div className="space-y-1">
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              onClick={() => onSelectChat(session.id)}
-              className={`group relative px-3 py-3 rounded-lg cursor-pointer transition-all ${
-                activeChatId === session.id
-                  ? 'bg-teal-50 border border-teal-200'
-                  : 'hover:bg-slate-50 border border-transparent'
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <MessageSquare className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                  activeChatId === session.id ? 'text-teal-600' : 'text-slate-400'
-                }`} />
-                
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${
-                    activeChatId === session.id ? 'text-teal-900' : 'text-slate-900'
-                  }`} style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    {session.title}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    {session.timestamp}
-                  </p>
+        {sessions.length === 0 ? (
+          <div className="px-3 py-8 text-center">
+            <MessageSquare className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+            <p className="text-sm text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              No hay conversaciones aún
+            </p>
+            <p className="text-xs text-slate-400 mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              Crea una nueva para empezar
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                onClick={() => onSelectChat(session.id)}
+                className={`group relative px-3 py-3 rounded-lg cursor-pointer transition-all ${activeChatId === session.id
+                    ? 'bg-teal-50 border border-teal-200'
+                    : 'hover:bg-slate-50 border border-transparent'
+                  }`}
+              >
+                <div className="flex items-start gap-2">
+                  <MessageSquare className={`w-4 h-4 mt-0.5 flex-shrink-0 ${activeChatId === session.id ? 'text-teal-600' : 'text-slate-400'
+                    }`} />
+
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${activeChatId === session.id ? 'text-teal-900' : 'text-slate-900'
+                      }`} style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                      {session.title}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                        {formatTimestamp(session.timestamp)}
+                      </p>
+                      {session.message_count > 0 && (
+                        <>
+                          <span className="text-xs text-slate-300">•</span>
+                          <p className="text-xs text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                            {session.message_count} {session.message_count === 1 ? 'mensaje' : 'mensajes'}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delete Button - Show on Hover */}
+                <div className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => handleDelete(session.id, e)}
+                    className="p-1.5 hover:bg-red-100 rounded text-red-600"
+                    title="Eliminar conversación"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-
-              {/* Action Buttons - Show on Hover */}
-              <div className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Handle rename
-                  }}
-                  className="p-1.5 hover:bg-slate-200 rounded text-slate-600"
-                  title="Renombrar"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Handle delete
-                  }}
-                  className="p-1.5 hover:bg-red-100 rounded text-red-600"
-                  title="Eliminar"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Footer Info */}
       <div className="p-4 border-t border-slate-200 bg-slate-50">
         <p className="text-xs text-slate-600 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-          <strong>{sessions.length}</strong> conversaciones guardadas
+          {sessions.length === 0 ? (
+            'Sin conversaciones guardadas'
+          ) : (
+            <>
+              <strong>{sessions.length}</strong> {sessions.length === 1 ? 'conversación guardada' : 'conversaciones guardadas'}
+            </>
+          )}
         </p>
       </div>
     </div>

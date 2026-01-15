@@ -4,47 +4,50 @@ import { MessageList } from './ai-chat/MessageList';
 import { ChatInputArea } from './ai-chat/ChatInputArea';
 import { useAIChat } from '../hooks/useAIChat';
 import { useDataContext } from '../context/DataContext';
-import { useState } from 'react';
 
 export function AIAssistant() {
   const { sessionId } = useDataContext();
-  const { messages, isLoading, sendMessage, clearChat } = useAIChat();
-
-  const [activeChatId, setActiveChatId] = useState<string | null>('1');
-  const [selectedModel, setSelectedModel] = useState('gemini-1.5-flash');
-  const [chatTitle, setChatTitle] = useState('Nuevo Chat');
+  const {
+    messages,
+    chatId,
+    chatSessions,
+    isLoading,
+    sendMessage,
+    loadChatHistory,
+    startNewChat,
+    deleteChatSession
+  } = useAIChat();
 
   const handleNewChat = () => {
-    clearChat();
-    setActiveChatId(null);
-    setChatTitle('Nuevo Chat');
+    startNewChat();
   };
 
-  const handleSelectChat = (chatId: string) => {
-    setActiveChatId(chatId);
-    // In a real app, you would load the chat history from storage
-    setChatTitle('Chat anterior');
+  const handleSelectChat = (targetChatId: string) => {
+    loadChatHistory(targetChatId);
+  };
+
+  const handleDeleteChat = (targetChatId: string) => {
+    deleteChatSession(targetChatId);
   };
 
   const handleSendMessage = async (content: string, files?: File[]) => {
     await sendMessage(content, files);
-
-    // Update title on first message if it's a new chat
-    if (messages.length === 0 && chatTitle === 'Nuevo Chat') {
-      // Extract first few words for title
-      const titleText = content.split(' ').slice(0, 5).join(' ');
-      setChatTitle(titleText.length < content.length ? `${titleText}...` : titleText);
-    }
   };
+
+  // Determine chat title
+  const chatTitle = chatSessions.find(s => s.id === chatId)?.title || 'Nuevo Chat';
+  const selectedModel = 'gemini-2.5-flash';
 
   return (
     <div className="h-full flex bg-slate-50">
       {/* Left Sidebar - 25% width */}
       <div className="w-1/4 min-w-[280px] max-w-[400px]">
         <ChatSidebar
+          sessions={chatSessions}
           onNewChat={handleNewChat}
           onSelectChat={handleSelectChat}
-          activeChatId={activeChatId}
+          onDeleteChat={handleDeleteChat}
+          activeChatId={chatId}
         />
       </div>
 
@@ -54,7 +57,7 @@ export function AIAssistant() {
         <ChatHeader
           chatTitle={chatTitle}
           selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
+          onModelChange={() => { }} // Model is fixed for now
         />
 
         {/* Session Context Indicator */}
