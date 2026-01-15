@@ -1,95 +1,40 @@
-import { useState } from 'react';
 import { ChatSidebar } from './ai-chat/ChatSidebar';
 import { ChatHeader } from './ai-chat/ChatHeader';
 import { MessageList } from './ai-chat/MessageList';
 import { ChatInputArea } from './ai-chat/ChatInputArea';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-}
+import { useAIChat } from '../hooks/useAIChat';
+import { useDataContext } from '../context/DataContext';
+import { useState } from 'react';
 
 export function AIAssistant() {
+  const { sessionId } = useDataContext();
+  const { messages, isLoading, sendMessage, clearChat } = useAIChat();
+
   const [activeChatId, setActiveChatId] = useState<string | null>('1');
-  const [selectedModel, setSelectedModel] = useState('gemini-pro');
-  const [chatTitle, setChatTitle] = useState('Análisis de correlación IMC');
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'user',
-      content: '¿Puedes ayudarme a interpretar una correlación de Pearson de 0.854 con p < 0.001 entre Peso e IMC?',
-      timestamp: 'hace 2 horas'
-    },
-    {
-      id: '2',
-      role: 'assistant',
-      content: `¡Por supuesto! Te ayudo a interpretar esta correlación:
-
-**Interpretación del coeficiente de Pearson (r = 0.854):**
-
-1. **Magnitud de la correlación**: Un valor de 0.854 indica una correlación **positiva muy fuerte** entre Peso e IMC. Esto significa que a medida que aumenta el peso, el IMC también tiende a aumentar de manera consistente.
-
-2. **Significancia estadística (p < 0.001)**: El p-valor extremadamente bajo indica que esta correlación es **estadísticamente significativa**. La probabilidad de que esta correlación sea producto del azar es menor al 0.1%.
-
-3. **Interpretación práctica**: 
-   - Existe una relación lineal muy fuerte entre ambas variables
-   - Aproximadamente el 73% de la variabilidad en el IMC puede explicarse por el peso (r² = 0.729)
-   - Esta correlación tiene sentido desde el punto de vista teórico, ya que el IMC se calcula directamente a partir del peso
-
-**Recomendaciones:**
-- ✅ Esta correlación es válida para reportar en un estudio
-- 📊 Podrías complementar con un gráfico de dispersión
-- ⚠️ Recuerda: correlación no implica causalidad
-
-¿Necesitas ayuda con algún otro análisis estadístico?`,
-      timestamp: 'hace 2 horas'
-    }
-  ]);
+  const [selectedModel, setSelectedModel] = useState('gemini-1.5-flash');
+  const [chatTitle, setChatTitle] = useState('Nuevo Chat');
 
   const handleNewChat = () => {
+    clearChat();
     setActiveChatId(null);
     setChatTitle('Nuevo Chat');
-    setMessages([]);
   };
 
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
-    // In a real app, you would load the chat history from a database
-    setChatTitle('Análisis de correlación IMC');
+    // In a real app, you would load the chat history from storage
+    setChatTitle('Chat anterior');
   };
 
   const handleSendMessage = async (content: string, files?: File[]) => {
-    if (!content && !files) return;
+    await sendMessage(content, files);
 
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: files && files.length > 0 
-        ? `${content}\n\n📎 Archivos adjuntos: ${files.map(f => f.name).join(', ')}`
-        : content,
-      timestamp: 'Ahora'
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-
-    // Simulate AI response (In production, this would call the Gemini API)
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `He recibido tu pregunta: "${content}". ${files && files.length > 0 ? `También he analizado los ${files.length} archivo(s) que adjuntaste.` : ''}\n\nEn una implementación real, aquí procesaría tu solicitud usando la API de Google Gemini y te proporcionaría un análisis detallado basado en tus datos biomédicos.\n\n**Capacidades disponibles:**\n- Análisis estadístico descriptivo\n- Interpretación de pruebas de hipótesis\n- Sugerencias de métodos apropiados\n- Visualización de resultados\n- Análisis de imágenes y gráficos\n\n¿En qué más puedo ayudarte?`,
-        timestamp: 'Ahora'
-      };
-      
-      setMessages(prev => [...prev, aiMessage]);
-      setIsLoading(false);
-    }, 2000);
+    // Update title on first message if it's a new chat
+    if (messages.length === 0 && chatTitle === 'Nuevo Chat') {
+      // Extract first few words for title
+      const titleText = content.split(' ').slice(0, 5).join(' ');
+      setChatTitle(titleText.length < content.length ? `${titleText}...` : titleText);
+    }
   };
 
   return (
@@ -111,6 +56,20 @@ export function AIAssistant() {
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
         />
+
+        {/* Session Context Indicator */}
+        {sessionId && (
+          <div className="px-6 py-2 bg-blue-50 border-b border-blue-200">
+            <div className="max-w-4xl mx-auto flex items-center gap-2 text-sm text-blue-800">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <span style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                <strong>Contexto activo:</strong> La IA puede ver tus datos cargados y responder preguntas específicas sobre ellos.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <MessageList messages={messages} isLoading={isLoading} />

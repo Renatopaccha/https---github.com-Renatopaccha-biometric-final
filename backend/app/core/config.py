@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # Session management
     session_timeout_minutes: int = 60
     
+    # AI Assistant settings
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
+    max_ai_file_size_mb: int = 20
+    ai_temperature: float = 0.7
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -5,7 +5,7 @@ Combines all v1 endpoints into a single router.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import upload, descriptive, data, cleaning, export
+from app.api.v1.endpoints import upload, descriptive, data, cleaning, export, ai
 
 # Create main v1 router
 api_router = APIRouter()
@@ -16,6 +16,7 @@ api_router.include_router(data.router, tags=["Data"])
 api_router.include_router(cleaning.router, prefix="/cleaning", tags=["Data Cleaning"])
 api_router.include_router(descriptive.router, prefix="/stats", tags=["Statistics"])
 api_router.include_router(export.router, prefix="/export", tags=["Export"])
+api_router.include_router(ai.router, prefix="/ai", tags=["AI Assistant"])
 
 # TODO: Add more endpoints as features are developed
 # api_router.include_router(cleaning.router, prefix="/cleaning", tags=["Data Cleaning"])

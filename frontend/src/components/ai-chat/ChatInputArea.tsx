@@ -17,7 +17,7 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
       onSendMessage(message.trim(), attachedFiles.length > 0 ? attachedFiles : undefined);
       setMessage('');
       setAttachedFiles([]);
-      
+
       // Reset textarea height
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -45,7 +45,7 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
-    
+
     // Auto-resize textarea
     e.target.style.height = 'auto';
     e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
@@ -93,7 +93,7 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
             className="flex-shrink-0 p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Adjuntar archivo (CSV, Excel, imágenes)"
+            title="Adjuntar archivo (Word, Excel, imágenes)"
           >
             <Paperclip className="w-5 h-5" />
           </button>
@@ -102,7 +102,7 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".csv,.xlsx,.xls,image/*"
+            accept=".docx,.xlsx,.xls,.png,.jpg,.jpeg"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -117,14 +117,14 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
               disabled={disabled}
               placeholder="Escribe tu pregunta o describe el análisis que necesitas..."
               className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ 
+              style={{
                 fontFamily: 'Inter, system-ui, sans-serif',
                 minHeight: '52px',
                 maxHeight: '150px'
               }}
               rows={1}
             />
-            
+
             {/* Character Count Hint */}
             {message.length > 0 && (
               <div className="absolute bottom-2 right-3 text-xs text-slate-400" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -147,11 +147,11 @@ export function ChatInputArea({ onSendMessage, disabled = false }: ChatInputArea
         {/* Help Text */}
         <div className="mt-2 flex items-center justify-between text-xs text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
           <span>
-            Presiona <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono">Enter</kbd> para enviar, 
+            Presiona <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono">Enter</kbd> para enviar,
             <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono ml-1">Shift + Enter</kbd> para nueva línea
           </span>
           <span className="text-slate-400">
-            Archivos soportados: CSV, Excel, imágenes
+            Archivos soportados: Word (.docx), Excel (.xlsx/.xls), Imágenes (.png/.jpg)
           </span>
         </div>
       </div>

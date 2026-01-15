@@ -16,6 +16,11 @@ scipy==1.14.1
 openpyxl==3.1.5
 xlsxwriter==3.2.0
 
+# AI Assistant
+google-generativeai==0.8.3
+python-docx==1.1.2
+Pillow==10.4.0
+
 # TODO: Add when implementing authentication
 # python-jose[cryptography]==3.3.0
 # passlib[bcrypt]==1.7.4
