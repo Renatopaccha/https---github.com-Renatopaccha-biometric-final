@@ -1,0 +1,16 @@
+[
+  {
+    "id": "532877c2-f6d1-4ed8-a138-98730441d950",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-01-15T09:24:03.572803",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "ae51c758-0e70-467d-8832-a3d003731bde",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-01-15T09:29:23.472424",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  }
+]

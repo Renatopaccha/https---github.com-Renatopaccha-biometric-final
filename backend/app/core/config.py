@@ -32,8 +32,10 @@ class Settings(BaseSettings):
     # CORS configuration
     cors_origins: List[str] = [
         "http://localhost:3000",
+        "http://localhost:3001",  # Vite dev server
         "http://localhost:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",  # Vite dev server
         "http://127.0.0.1:5173",
         "https://https-githubcom-renatopaccha-biometric-final-production.up.railway.app",
     ]

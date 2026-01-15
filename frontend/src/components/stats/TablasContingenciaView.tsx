@@ -1,9 +1,10 @@
-import { ArrowLeft, ChevronDown, Loader2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Loader2, Sparkles, X } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import { ActionToolbar } from './ActionToolbar';
 import { useDataContext } from '../../context/DataContext';
 import { getCrosstabStats } from '../../api/stats';
+import { sendChatMessage } from '../../api/ai';
 import type { ContingencyTableResponse, ContingencyCellData, ContingencyTableResult } from '../../types/stats';
 
 // Estilos para Excel WYSIWYG - Matching UI Design
@@ -76,9 +77,10 @@ const excelStyles = {
 
 interface TablasContingenciaViewProps {
   onBack: () => void;
+  onNavigateToChat?: (chatId?: string) => void;
 }
 
-export function TablasContingenciaView({ onBack }: TablasContingenciaViewProps) {
+export function TablasContingenciaView({ onBack, onNavigateToChat }: TablasContingenciaViewProps) {
   const { sessionId, columns } = useDataContext();
 
   // State for variable selection
@@ -94,6 +96,12 @@ export function TablasContingenciaView({ onBack }: TablasContingenciaViewProps) 
   const [tableData, setTableData] = useState<ContingencyTableResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // AI Interpretation State
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Dropdown states
   const [showRowDropdown, setShowRowDropdown] = useState(false);
@@ -173,10 +181,153 @@ export function TablasContingenciaView({ onBack }: TablasContingenciaViewProps) 
     fetchData();
   }, [sessionId, rowVar, colVar, segmentBy]);
 
+  // Reset AI state when variables change
+  useEffect(() => {
+    setAnalysisResult(null);
+    setActiveChatId(null);
+  }, [rowVar, colVar, activeSegment]);
+
   const toggleMetric = (metric: string) => {
     setSelectedMetrics(prev =>
       prev.includes(metric) ? prev.filter(m => m !== metric) : [...prev, metric]
     );
+  };
+
+  // ========================================================================
+  // AI INTERPRETATION FUNCTIONS
+  // ========================================================================
+
+  // Helper: Generate context for AI from contingency table
+  const generateContingencyContext = (): string => {
+    if (!rowVar || !colVar || !currentTable) {
+      return "No hay datos disponibles.";
+    }
+
+    let context = `Análisis de Contingencia (Cruce de Variables)${segmentBy ? ` - Segmento: ${activeSegment}` : ''}:\n\n`;
+    context += `Variable de Fila: ${rowVar}\n`;
+    context += `Variable de Columna: ${colVar}\n\n`;
+    context += `Datos del Cruce:\n`;
+
+    // Iterate through rows and columns
+    currentTable.row_categories.forEach(rowCat => {
+      context += `\nPara ${rowVar} = "${rowCat}":\n`;
+      currentTable.col_categories.forEach(colCat => {
+        const cellData = currentTable.cells[rowCat][colCat];
+        context += `  - ${colVar} = "${colCat}": ${cellData.count} casos (${cellData.row_percent.toFixed(1)}% de fila, ${cellData.col_percent.toFixed(1)}% de columna)\n`;
+      });
+      const rowTotal = currentTable.row_totals[rowCat];
+      context += `  Total: ${rowTotal.count} casos\n`;
+    });
+
+    // Add column totals
+    context += `\nTotales por ${colVar}:\n`;
+    currentTable.col_categories.forEach(colCat => {
+      const colTotal = currentTable.col_totals[colCat];
+      context += `  - ${colVar} = "${colCat}": ${colTotal.count} casos (${colTotal.col_percent.toFixed(1)}%)\n`;
+    });
+
+    context += `\nTotal General: ${currentTable.grand_total} casos\n`;
+
+    // Add chi-square if available
+    const tableWithStats = currentTable as any;
+    if (tableWithStats.chi_square !== undefined && tableWithStats.p_value !== undefined) {
+      context += `\nPrueba Chi-cuadrado:\n`;
+      context += `  - χ² = ${tableWithStats.chi_square.toFixed(3)}\n`;
+      context += `  - p-value = ${tableWithStats.p_value.toFixed(4)}\n`;
+    }
+
+    return context;
+  };
+
+  // Handler: AI interpretation
+  const handleAIInterpretation = async () => {
+    if (analysisResult || isAnalyzing) return; // Already analyzing or result exists
+
+    if (!rowVar || !colVar) {
+      alert('Selecciona las variables de fila y columna primero');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const contingencyContext = generateContingencyContext();
+      const prompt = `Actúa como un experto bioestadístico. Analiza la siguiente tabla de contingencia entre '${rowVar}' y '${colVar}'.
+
+Tu objetivo es determinar si parece haber una asociación o dependencia entre las variables basándote en la distribución de los datos.
+
+Resalta las casillas con mayor frecuencia o desbalances notables. Si hay prueba Chi-cuadrado disponible, interpreta el p-value. Sé breve y concluyente.
+
+${contingencyContext}`;
+
+      const response = await sendChatMessage({
+        session_id: sessionId || undefined,
+        chat_id: activeChatId || undefined,
+        message: prompt,
+        history: []
+      });
+
+      if (response.success) {
+        setAnalysisResult(response.response);
+        if (response.chat_id) {
+          setActiveChatId(response.chat_id);
+        }
+      } else {
+        setError("No se pudo obtener la interpretación de IA.");
+      }
+    } catch (err) {
+      console.error("AI Error:", err);
+      setError("Error de conexión con el servicio de IA.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Handler: Continue to chat
+  const handleContinueToChat = async () => {
+    if (!onNavigateToChat || !sessionId) return;
+
+    let finalChatId = activeChatId;
+
+    try {
+      setIsNavigating(true);
+
+      // Si no hay análisis previo, enviar contexto silenciosamente
+      if (!activeChatId) {
+        const contingencyContext = generateContingencyContext();
+        const interpretationContext = analysisResult
+          ? `\n\nInterpretación Previa Realizada:\n${analysisResult}`
+          : '\n\n(El usuario aún no ha solicitado una interpretación automática)';
+
+        const handoffMessage = `**SYSTEM CONTEXT HANDOFF**
+        
+Estás recibiendo el contexto de la sesión actual de "Tablas de Contingencia" para asistir al usuario.
+
+DATOS ESTRUCTURADOS:
+${contingencyContext}
+${interpretationContext}
+
+INSTRUCCIÓN:
+El usuario ha sido transferido al chat principal. Mantén este contexto en memoria para responder preguntas sobre la relación entre estas variables. Saluda brevemente confirmando que tienes los datos.`;
+
+        const response = await sendChatMessage({
+          session_id: sessionId,
+          chat_id: activeChatId || undefined,
+          message: handoffMessage,
+          history: []
+        });
+
+        if (response.chat_id) {
+          finalChatId = response.chat_id;
+          setActiveChatId(response.chat_id);
+        }
+      }
+
+    } catch (error) {
+      console.error("Error transfiriendo contexto:", error);
+    } finally {
+      setIsNavigating(false);
+      onNavigateToChat(finalChatId || undefined);
+    }
   };
 
   // ========================================================================
@@ -809,8 +960,8 @@ export function TablasContingenciaView({ onBack }: TablasContingenciaViewProps) 
                     key={segment}
                     onClick={() => setActiveSegment(segment)}
                     className={`px-4 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${activeSegment === segment
-                        ? 'text-teal-700'
-                        : 'text-slate-600 hover:text-slate-900'
+                      ? 'text-teal-700'
+                      : 'text-slate-600 hover:text-slate-900'
                       }`}
                   >
                     {segment}
@@ -819,6 +970,54 @@ export function TablasContingenciaView({ onBack }: TablasContingenciaViewProps) 
                     )}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Panel de Análisis IA */}
+          {(analysisResult || isAnalyzing) && (
+            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-200 shadow-sm relative overflow-hidden transition-all duration-300 mb-6">
+              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+
+              <div className="p-6 relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+                      {isAnalyzing ? (
+                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                      ) : (
+                        <Sparkles className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {isAnalyzing ? 'Analizando relación entre variables...' : `Análisis de Relación: ${rowVar} vs ${colVar}`}
+                    </h3>
+                  </div>
+                  {!isAnalyzing && (
+                    <button
+                      onClick={() => setAnalysisResult(null)}
+                      className="p-1 hover:bg-black/5 rounded-full transition-colors text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 border border-indigo-100 min-h-[100px]">
+                  {isAnalyzing ? (
+                    <div className="space-y-3 animate-pulse">
+                      <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-1/2"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm prose-indigo max-w-none text-slate-700">
+                      {analysisResult!.split('\n').map((line, i) => (
+                        <p key={i} className="mb-2 last:mb-0">{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -972,6 +1171,10 @@ export function TablasContingenciaView({ onBack }: TablasContingenciaViewProps) 
               <ActionToolbar
                 onExportExcel={handleExportExcel}
                 onExportPDF={handleExportPDF}
+                onAIInterpretation={handleAIInterpretation}
+                onContinueToChat={handleContinueToChat}
+                isAnalyzing={isAnalyzing}
+                isNavigating={isNavigating}
               />
             </div>
           )}

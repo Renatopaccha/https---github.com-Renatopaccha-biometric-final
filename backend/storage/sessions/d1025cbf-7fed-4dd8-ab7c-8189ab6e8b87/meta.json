@@ -1,0 +1,9 @@
+{
+  "current_version": 0,
+  "history": [],
+  "intentional_missing": {},
+  "audit_log": [
+    "[2026-01-15 09:22:52] Session created. Original file: 'test_data.csv'. Initial rows: 5",
+    "[2026-01-15 09:28:51] Removed 1 irrelevant columns: Sexo"
+  ]
+}
