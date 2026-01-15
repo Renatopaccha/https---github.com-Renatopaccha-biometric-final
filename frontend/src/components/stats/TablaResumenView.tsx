@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Sparkles, CheckCircle2, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Sparkles, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { ActionToolbar } from './ActionToolbar';
 import { useDataContext } from '../../context/DataContext';
 import { getSummaryStats } from '../../api/stats';
+import { sendChatMessage } from '../../api/ai';
 import type { SummaryStatRow, SummaryInsight } from '../../types/stats';
 
 interface TablaResumenViewProps {
@@ -36,8 +37,8 @@ function NormalityBadge({ isNormal, pValue }: { isNormal: boolean | null; pValue
   return (
     <div className="relative group inline-block">
       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium cursor-help ${isNormal
-          ? 'bg-green-100 text-green-800 border border-green-200'
-          : 'bg-amber-100 text-amber-800 border border-amber-200'
+        ? 'bg-green-100 text-green-800 border border-green-200'
+        : 'bg-amber-100 text-amber-800 border border-amber-200'
         }`}>
         {isNormal ? '✓ Normal' : '⚠ Asimétrica'}
       </span>
@@ -84,12 +85,17 @@ function CompletenessBar({ value, max }: { value: number; max: number }) {
   );
 }
 
-export function TablaResumenView({ onBack }: TablaResumenViewProps) {
+export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewProps) {
   const { sessionId, totalRows } = useDataContext();
   const [data, setData] = useState<SummaryStatRow[]>([]);
   const [insights, setInsights] = useState<SummaryInsight[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // AI Interpretation State
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [contextSent, setContextSent] = useState(false);
 
   useEffect(() => {
     async function fetchSummary() {
@@ -164,6 +170,76 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
     // Descargar el archivo .xlsx
     XLSX.writeFile(workbook, 'Resumen_Estadistico.xlsx');
   };
+
+  const generateTableContext = () => {
+    if (data.length === 0) return "No hay datos disponibles.";
+
+    let context = "Tabla de Estadísticas Descriptivas:\n\n";
+    data.forEach(row => {
+      context += `- Variable: ${row.variable} (${row.is_binary ? 'Binaria' : 'Numérica'})\n`;
+      context += `  N: ${row.n}, Completitud: ${((row.n / totalRows) * 100).toFixed(1)}%\n`;
+      if (row.is_binary) {
+        context += `  Prevalencia: ${(row.media! * 100).toFixed(1)}%\n`;
+      } else {
+        context += `  Media: ${row.media?.toFixed(2)}, Mediana: ${row.mediana?.toFixed(2)}, DE: ${row.desvio_estandar?.toFixed(2)}\n`;
+        context += `  Min: ${row.minimo}, Max: ${row.maximo}\n`;
+        context += `  Normalidad: ${row.is_normal ? 'Sí' : 'No'} (p=${row.normality_p_value?.toFixed(3)})\n`;
+      }
+      context += "\n";
+    });
+    return context;
+  };
+
+  const handleAIInterpretation = async () => {
+    if (analysisResult || isAnalyzing) return; // Ya existe o está cargando
+
+    setIsAnalyzing(true);
+    try {
+      const tableContext = generateTableContext();
+      const prompt = `Analiza la siguiente tabla de estadísticas descriptivas y dame 3 hallazgos clave o interpretaciones clínicas/estadísticas breves:\n\n${tableContext}`;
+
+      const response = await sendChatMessage({
+        session_id: sessionId || undefined,
+        message: prompt,
+        history: [] // No necesitamos historial previo para esto
+      });
+
+      if (response.success) {
+        setAnalysisResult(response.response);
+        setContextSent(true);
+      } else {
+        setError("No se pudo obtener la interpretación de IA.");
+      }
+    } catch (err) {
+      console.error("AI Error:", err);
+      setError("Error de conexión con el servicio de IA.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleContinueToChat = async () => {
+    if (!onNavigateToChat) return;
+
+    // Si aún no hemos enviado el contexto, enviarlo silenciosamente antes de navegar
+    if (!contextSent && sessionId) {
+      try {
+        const tableContext = generateTableContext();
+        await sendChatMessage({
+          session_id: sessionId,
+          message: `He generado la siguiente tabla resumen. Úsala como contexto para nuestras próximas conversaciones:\n\n${tableContext}`,
+          history: []
+        });
+        setContextSent(true);
+      } catch (err) {
+        console.warn("Could not pre-send context to chat:", err);
+        // Continuamos de todas formas
+      }
+    }
+
+    onNavigateToChat();
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-50">
       {/* Header */}
@@ -205,8 +281,8 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                     <div
                       key={idx}
                       className={`flex items-start gap-3 bg-white rounded-lg p-3 border ${insight.type === 'error' ? 'border-red-200' :
-                          insight.type === 'warning' ? 'border-amber-200' :
-                            insight.type === 'success' ? 'border-green-200' : 'border-blue-200'
+                        insight.type === 'warning' ? 'border-amber-200' :
+                          insight.type === 'success' ? 'border-green-200' : 'border-blue-200'
                         }`}
                     >
                       <InsightIcon type={insight.type} />
@@ -216,6 +292,56 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Panel de Análisis IA */}
+          {(analysisResult || isAnalyzing) && (
+            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-200 shadow-sm relative overflow-hidden transition-all duration-300">
+              {/* Background decoration */}
+              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+
+              <div className="p-6 relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+                      {isAnalyzing ? (
+                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                      ) : (
+                        <Sparkles className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {isAnalyzing ? 'Analizando datos...' : 'Análisis de Inteligencia Artificial'}
+                    </h3>
+                  </div>
+                  {!isAnalyzing && (
+                    <button
+                      onClick={() => setAnalysisResult(null)}
+                      className="p-1 hover:bg-black/5 rounded-full transition-colors text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 border border-indigo-100 min-h-[100px]">
+                  {isAnalyzing ? (
+                    <div className="space-y-3 animate-pulse">
+                      <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-1/2"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm prose-indigo max-w-none text-slate-700">
+                      {/* Renderizamos el texto con saltos de línea */}
+                      {analysisResult!.split('\n').map((line, i) => (
+                        <p key={i} className="mb-2 last:mb-0">{line}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -272,8 +398,8 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                       <td className="px-6 py-4 text-sm text-slate-900 text-center font-mono">{row.n}</td>
                       {/* Media y DE: resaltadas si es Normal */}
                       <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
-                          row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' :
-                            row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
+                        row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' :
+                          row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
                         }`}>
                         {row.is_binary ? (
                           <span className="text-purple-700 font-semibold">{formatPrevalence(row.media)}</span>
@@ -283,28 +409,28 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
                       </td>
                       {/* Mediana: resaltada si NO es Normal */}
                       <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
-                          row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
-                            row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
+                        row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
+                          row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
                         }`}>
                         {row.is_binary ? '-' : formatNumber(row.mediana)}
                       </td>
                       {/* DE: resaltada si es Normal */}
                       <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
-                          row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' :
-                            row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
+                        row.is_normal === true ? 'font-bold text-teal-700 bg-teal-50' :
+                          row.is_normal === false ? 'text-slate-400' : 'text-slate-900'
                         }`}>
                         {row.is_binary ? '-' : formatNumber(row.desvio_estandar)}
                       </td>
                       {/* Mín/Máx: resaltados si NO es Normal */}
                       <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
-                          row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
-                            row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
+                        row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
+                          row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
                         }`}>
                         {row.is_binary ? '-' : formatNumber(row.minimo)}
                       </td>
                       <td className={`px-6 py-4 text-sm text-center font-mono ${row.is_binary ? '' :
-                          row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
-                            row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
+                        row.is_normal === false ? 'font-bold text-orange-700 bg-orange-50' :
+                          row.is_normal === true ? 'text-slate-400' : 'text-slate-900'
                         }`}>
                         {row.is_binary ? '-' : formatNumber(row.maximo)}
                       </td>
@@ -323,7 +449,11 @@ export function TablaResumenView({ onBack }: TablaResumenViewProps) {
               </p>
             </div>
 
-            <ActionToolbar onExportExcel={handleExportExcel} />
+            <ActionToolbar
+              onExportExcel={handleExportExcel}
+              onAIInterpretation={handleAIInterpretation}
+              onContinueToChat={handleContinueToChat}
+            />
           </div>
         </div>
       </div>

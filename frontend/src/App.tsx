@@ -26,7 +26,7 @@ export default function App() {
         <main className="flex-1 overflow-auto bg-gray-50">
           {currentView === 'inicio' && <Home />}
           {currentView === 'preprocesamiento' && <DataPreprocessing />}
-          {currentView === 'estadistica' && <DescriptiveStats />}
+          {currentView === 'estadistica' && <DescriptiveStats onNavigate={setCurrentView} />}
           {currentView === 'asistente' && <AIAssistant />}
         </main>
       </div>
