@@ -209,11 +209,25 @@ export function useAIChat(): UseAIChatReturn {
             const errorMsg = err instanceof Error ? err.message : 'Error de conexión';
             setError(errorMsg);
 
-            // Add generic error message
+            // Determine error type and provide context-aware message
+            let userFriendlyMessage = '❌ No se pudo procesar tu mensaje. Por favor, verifica tu conexión e intenta nuevamente.';
+
+            if (err instanceof Error) {
+                // Timeout error
+                if (err.name === 'TimeoutError' || err.message.includes('timeout') || err.message.includes('aborted')) {
+                    userFriendlyMessage = '⏱️ La IA está tomando más tiempo de lo esperado. Intenta reformular tu pregunta o dividirla en partes más pequeñas.';
+                }
+                // Network error
+                else if (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('conexión')) {
+                    userFriendlyMessage = '🌐 Error de conexión. Por favor, verifica tu conexión a internet e intenta nuevamente.';
+                }
+            }
+
+            // Add context-aware error message
             const errorMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: '❌ No se pudo procesar tu mensaje. Por favor, verifica tu conexión e intenta nuevamente.',
+                content: userFriendlyMessage,
                 timestamp: new Date().toISOString()
             };
 

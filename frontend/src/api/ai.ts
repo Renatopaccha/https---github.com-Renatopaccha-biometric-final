@@ -104,7 +104,8 @@ export async function sendChatMessage(payload: ChatRequest): Promise<ChatRespons
                 message: payload.message,
                 history: payload.history,
                 attachments: attachments.length > 0 ? attachments : []
-            })
+            }),
+            signal: AbortSignal.timeout(60000) // 60 second timeout for complex analyses
         });
 
         if (!response.ok) {

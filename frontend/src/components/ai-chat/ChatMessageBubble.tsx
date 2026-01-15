@@ -26,47 +26,57 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
       <div className={`max-w-[70%] ${isUser ? 'order-first' : ''}`}>
         {/* Message Bubble */}
         <div
-          className={`rounded-2xl px-5 py-3.5 shadow-sm ${
-            isUser
-              ? 'bg-gradient-to-br from-teal-500 to-teal-600 text-white'
-              : 'bg-white border border-slate-200 text-slate-900'
-          }`}
+          className={`rounded-2xl px-5 py-3.5 shadow-sm ${isUser
+            ? 'bg-gradient-to-br from-teal-500 to-teal-600 text-white'
+            : 'bg-white border border-slate-200 text-slate-900'
+            }`}
         >
           {isUser ? (
             <p className="text-sm leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
               {message.content}
             </p>
           ) : (
-            <div className="prose prose-sm max-w-none prose-slate">
+            <div className="prose prose-slate max-w-none text-sm dark:prose-invert break-words">
               <ReactMarkdown
                 components={{
-                  p: ({ children }) => (
-                    <p className="text-sm leading-relaxed mb-3 last:mb-0" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                      {children}
-                    </p>
-                  ),
-                  ul: ({ children }) => (
-                    <ul className="list-disc list-inside text-sm space-y-1 my-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                      {children}
-                    </ul>
-                  ),
-                  ol: ({ children }) => (
-                    <ol className="list-decimal list-inside text-sm space-y-1 my-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                      {children}
-                    </ol>
-                  ),
-                  code: ({ children, className }) => {
-                    const isInline = !className;
-                    return isInline ? (
-                      <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs text-purple-700" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, monospace' }}>
-                        {children}
-                      </code>
-                    ) : (
-                      <code className="block p-3 bg-slate-900 rounded-lg text-xs text-green-400 overflow-x-auto my-2" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, monospace' }}>
-                        {children}
-                      </code>
+                  // Personalización para bloques de código y código en línea
+                  code({ node, inline, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || '');
+
+                    // CASO 1: Código en línea (ej: `variable`)
+                    if (inline) {
+                      return (
+                        <span
+                          className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded-md font-mono text-xs font-semibold border border-slate-200"
+                          {...props}
+                        >
+                          {children}
+                        </span>
+                      );
+                    }
+
+                    // CASO 2: Bloque de código completo (ej: ```python ... ```)
+                    return (
+                      <div className="relative my-4 rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm text-slate-800 shadow-sm overflow-x-auto">
+                        {/* Opcional: Etiqueta del lenguaje si existe */}
+                        {match && (
+                          <div className="absolute top-0 right-0 px-2 py-1 text-[10px] uppercase text-slate-400 font-bold select-none">
+                            {match[1]}
+                          </div>
+                        )}
+                        <pre className="m-0 bg-transparent p-0">
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        </pre>
+                      </div>
                     );
                   },
+                  // Mejora opcional para listas y párrafos
+                  ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 my-2">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 my-2">{children}</ol>,
+                  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                  // Mantener estilos existentes para otros elementos
                   strong: ({ children }) => (
                     <strong className="font-bold text-slate-900">{children}</strong>
                   ),
@@ -78,12 +88,12 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                     </div>
                   ),
                   th: ({ children }) => (
-                    <th className="border border-slate-300 px-3 py-2 bg-slate-100 text-left font-bold" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    <th className="border border-slate-300 px-3 py-2 bg-slate-100 text-left font-bold">
                       {children}
                     </th>
                   ),
                   td: ({ children }) => (
-                    <td className="border border-slate-300 px-3 py-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    <td className="border border-slate-300 px-3 py-2">
                       {children}
                     </td>
                   ),

@@ -79,22 +79,19 @@ class AIService:
         Returns:
             Complete system prompt for the AI
         """
-        base_prompt = """Eres un tutor experto en bioestadística y análisis de datos biomédicos. Tu objetivo es ayudar a estudiantes e investigadores a:
+        base_prompt = """Eres un Consultor Experto en Bioestadística y Ciencia de Datos Clínicos para la app "Biometric".
+Tu objetivo no es solo responder, sino guiar al investigador (usuario) hacia descubrimientos más profundos.
 
-1. **Elegir pruebas estadísticas apropiadas** basándose en el tipo de datos y la pregunta de investigación
-2. **Interpretar resultados estadísticos** (p-valores, intervalos de confianza, tamaños de efecto)
-3. **Detectar problemas en los datos** (valores atípicos, normalidad, homocedasticidad)
-4. **Recomendar métodos de limpieza** para valores faltantes y duplicados
-5. **Explicar conceptos estadísticos** de manera clara y pedagógica
+DIRECTRICES DE RESPUESTA:
+1. **Profundidad Analítica:** Nunca des respuestas de una sola línea. Explica el "por qué" estadístico detrás de tu análisis.
+2. **Método Socrático:** Al final de cada respuesta importante, DEBES formular una pregunta de seguimiento relevante al usuario. Ejemplo: "¿Consideraste normalizar esta variable antes del test?" o "¿Cuál es tu hipótesis nula para este cruce de datos?".
+3. **Contexto:** Si te dan una tabla resumen, analiza tendencias, outliers y valores p. No solo los listes.
+4. **Formato:** Usa Markdown para negritas en hallazgos clave y listas para facilitar la lectura.
+5. **Elección de Pruebas:** Explica los supuestos de cada prueba estadística y advierte sobre errores comunes (p-hacking, correlación vs causalidad).
+6. **Recomendaciones Prácticas:** Sugiere visualizaciones apropiadas y métodos de limpieza de datos cuando sea relevante.
+7. **Código:** Formatea código estadístico en bloques cuando sea apropiado (Python/Pandas/SciPy).
 
-**Directrices:**
-- Sé claro, conciso y educativo
-- Usa ejemplos prácticos del contexto biomédico
-- Explica los supuestos de cada prueba estadística
-- Sugiere visualizaciones apropiadas
-- Advierte sobre errores comunes (p-hacking, correlación vs causalidad)
-- Incluye referencias a métodos paramétricos y no paramétricos cuando sea relevante
-- Formatea código estadístico en bloques cuando sea apropiado (Python/Pandas/SciPy)
+Si el usuario pregunta algo simple, responde y luego invítalo a explorar un aspecto más complejo relacionado.
 
 """
         
@@ -534,10 +531,10 @@ class AIService:
                 response = self.model.generate_content(
                     [full_prompt] + file_contents,
                     generation_config={
-                        "temperature": settings.ai_temperature,
+                        "temperature": 0.7,
                         "top_p": 0.95,
                         "top_k": 40,
-                        "max_output_tokens": 2048,
+                        "max_output_tokens": 4096,
                     }
                 )
             else:
@@ -545,10 +542,10 @@ class AIService:
                 response = self.model.generate_content(
                     full_prompt,
                     generation_config={
-                        "temperature": settings.ai_temperature,
+                        "temperature": 0.7,
                         "top_p": 0.95,
                         "top_k": 40,
-                        "max_output_tokens": 2048,
+                        "max_output_tokens": 4096,
                     }
                 )
             
