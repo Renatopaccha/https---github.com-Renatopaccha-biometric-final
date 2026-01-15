@@ -1,8 +1,9 @@
-import { ArrowLeft, ChevronDown, X, Loader2, Pencil, Save } from 'lucide-react';
+import { ArrowLeft, ChevronDown, X, Loader2, Pencil, Save, Sparkles } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import { useDataContext } from '../../context/DataContext';
 import { getFrequencyStats } from '../../api/stats';
+import { sendChatMessage } from '../../api/ai';
 import { ActionToolbar } from './ActionToolbar';
 import type { FrequencyTableResult, FrequencyRow } from '../../types/stats';
 
@@ -65,7 +66,7 @@ const excelStyles = {
 
 interface TablasFrecuenciaViewProps {
   onBack: () => void;
-  onNavigateToChat?: () => void;
+  onNavigateToChat?: (chatId?: string) => void;
 }
 
 export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuenciaViewProps) {
@@ -75,16 +76,22 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
   const [showVarsDropdown, setShowVarsDropdown] = useState(false);
   const [showSegmentDropdown, setShowSegmentDropdown] = useState(false);
   const [activeSegment, setActiveSegment] = useState<string>('General');
-  
+
   // Nueva estructura de datos segmentados
   const [segments, setSegments] = useState<string[]>([]);
   const [tablesData, setTablesData] = useState<Record<string, FrequencyTableResult[]>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Estado para modo edición
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Record<string, FrequencyTableResult[]>>({});
+
+  // AI Interpretation State
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const varsRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
@@ -139,6 +146,12 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
     setIsEditing(false);
   }, [tablesData]);
 
+  // Reset AI state when selection changes
+  useEffect(() => {
+    setAnalysisResult(null);
+    setActiveChatId(null);
+  }, [selectedVars, segmentBy, activeSegment]);
+
   // Handler para editar celda
   const handleCellEdit = (
     segment: string,
@@ -151,20 +164,20 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
       const newData = { ...prev };
       const tables = [...(newData[segment] || [])];
       const tableIndex = tables.findIndex(t => t.variable === variableName);
-      
+
       if (tableIndex === -1) return prev;
-      
+
       const table = { ...tables[tableIndex] };
       const rows = [...table.rows];
       const row = { ...rows[rowIndex] };
-      
+
       if (field === 'categoria') {
         row.categoria = value;
       } else if (field === 'frecuencia') {
         const numValue = parseInt(value) || 0;
         row.frecuencia = numValue;
         // Recalcular porcentaje si es posible
-        const newTotal = rows.reduce((sum, r, i) => 
+        const newTotal = rows.reduce((sum, r, i) =>
           sum + (i === rowIndex ? numValue : r.frecuencia), 0
         );
         if (newTotal > 0) {
@@ -180,7 +193,7 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
       } else if (field === 'porcentaje') {
         row.porcentaje = parseFloat(value) || 0;
       }
-      
+
       rows[rowIndex] = row;
       // Recalcular porcentaje acumulado
       let cumulative = 0;
@@ -188,11 +201,11 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
         cumulative += r.porcentaje;
         r.porcentaje_acumulado = cumulative;
       });
-      
+
       table.rows = rows;
       tables[tableIndex] = table;
       newData[segment] = tables;
-      
+
       return newData;
     });
   };
@@ -226,12 +239,12 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
       const ws: XLSX.WorkSheet = {};
       let rowNum = 0;
       const numCols = segmentBy ? 5 : 4;
-      
+
       // Headers
-      const headers = segmentBy 
+      const headers = segmentBy
         ? ['Segmento', 'Categoría', 'N', '%', '% Acum.']
         : ['Categoría', 'N', '%', '% Acum.'];
-      
+
       headers.forEach((header, colIdx) => {
         const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx });
         ws[cellRef] = { v: header, t: 's', s: excelStyles.header };
@@ -249,10 +262,10 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
               rowData.forEach((val, colIdx) => {
                 const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx });
                 const isNumCol = colIdx >= 2;
-                ws[cellRef] = { 
-                  v: val, 
-                  t: isNumCol ? 'n' : 's', 
-                  s: isNumCol ? excelStyles.cellNumber : excelStyles.cell 
+                ws[cellRef] = {
+                  v: val,
+                  t: isNumCol ? 'n' : 's',
+                  s: isNumCol ? excelStyles.cellNumber : excelStyles.cell
                 };
               });
               rowNum++;
@@ -261,10 +274,10 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
             const totalData = [segment, 'Total', table.total, '100.0', '100.0'];
             totalData.forEach((val, colIdx) => {
               const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx });
-              ws[cellRef] = { 
-                v: val, 
-                t: colIdx >= 2 ? 'n' : 's', 
-                s: colIdx === 0 || colIdx === 1 ? excelStyles.totalLabel : excelStyles.total 
+              ws[cellRef] = {
+                v: val,
+                t: colIdx >= 2 ? 'n' : 's',
+                s: colIdx === 0 || colIdx === 1 ? excelStyles.totalLabel : excelStyles.total
               };
             });
             rowNum++;
@@ -279,10 +292,10 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
             rowData.forEach((val, colIdx) => {
               const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx });
               const isNumCol = colIdx >= 1;
-              ws[cellRef] = { 
-                v: val, 
-                t: isNumCol ? 'n' : 's', 
-                s: isNumCol ? excelStyles.cellNumber : excelStyles.cell 
+              ws[cellRef] = {
+                v: val,
+                t: isNumCol ? 'n' : 's',
+                s: isNumCol ? excelStyles.cellNumber : excelStyles.cell
               };
             });
             rowNum++;
@@ -291,10 +304,10 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
           const totalData = ['Total', table.total, '100.0', '100.0'];
           totalData.forEach((val, colIdx) => {
             const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx });
-            ws[cellRef] = { 
-              v: val, 
-              t: colIdx >= 1 ? 'n' : 's', 
-              s: colIdx === 0 ? excelStyles.totalLabel : excelStyles.total 
+            ws[cellRef] = {
+              v: val,
+              t: colIdx >= 1 ? 'n' : 's',
+              s: colIdx === 0 ? excelStyles.totalLabel : excelStyles.total
             };
           });
           rowNum++;
@@ -303,9 +316,9 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
 
       // Set range
       ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rowNum - 1, c: numCols - 1 } });
-      
+
       // Column widths
-      ws['!cols'] = segmentBy 
+      ws['!cols'] = segmentBy
         ? [{ wch: 15 }, { wch: 25 }, { wch: 10 }, { wch: 10 }, { wch: 12 }]
         : [{ wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
 
@@ -358,7 +371,7 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
       for (const segment of segments) {
         const tables = dataSource[segment] || [];
         const table = tables.find(t => t.variable === variable);
-        
+
         if (!table) continue;
 
         if (segmentBy && segments.length > 1) {
@@ -383,22 +396,22 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
           head: [['Categoría', 'N', '%', '% Acum.']],
           body: tableData,
           theme: 'grid',
-          headStyles: { 
+          headStyles: {
             fillColor: [243, 244, 246],
             textColor: [31, 41, 55],
             lineColor: [209, 213, 219],
             lineWidth: 0.1,
             fontStyle: 'bold'
           },
-          bodyStyles: { 
-            lineColor: [209, 213, 219], 
-            lineWidth: 0.1, 
-            textColor: [55, 65, 81] 
+          bodyStyles: {
+            lineColor: [209, 213, 219],
+            lineWidth: 0.1,
+            textColor: [55, 65, 81]
           },
-          footStyles: { 
-            fillColor: [229, 231, 235], 
-            textColor: [0, 0, 0], 
-            fontStyle: 'bold' 
+          footStyles: {
+            fillColor: [229, 231, 235],
+            textColor: [0, 0, 0],
+            fontStyle: 'bold'
           },
           alternateRowStyles: { fillColor: [255, 255, 255] },
           margin: { left: 14, right: 14 },
@@ -453,16 +466,16 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
   };
 
   // Componente FrequencyTable editable
-  const FrequencyTable = ({ 
-    title, 
+  const FrequencyTable = ({
+    title,
     data,
     total,
     variableName,
     segment,
     editable,
     onEdit
-  }: { 
-    title?: string; 
+  }: {
+    title?: string;
     data: FrequencyRow[];
     total: number;
     variableName: string;
@@ -727,11 +740,10 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
                   <button
                     key={segment}
                     onClick={() => setActiveSegment(segment)}
-                    className={`px-4 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${
-                      activeSegment === segment 
-                        ? 'text-teal-700' 
+                    className={`px-4 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${activeSegment === segment
+                        ? 'text-teal-700'
                         : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     {segment}
                     {activeSegment === segment && (
@@ -747,9 +759,9 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
           {!isLoading && !error && currentTables.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {currentTables.map((table: FrequencyTableResult) => (
-                <FrequencyTable 
-                  key={`${activeSegment}-${table.variable}`} 
-                  title={table.variable} 
+                <FrequencyTable
+                  key={`${activeSegment}-${table.variable}`}
+                  title={table.variable}
                   data={table.rows}
                   total={table.total}
                   variableName={table.variable}
