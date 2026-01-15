@@ -21,7 +21,10 @@ export function DescriptiveStats({ onNavigate }: { onNavigate?: (view: any, chat
           onNavigateToChat={(chatId) => onNavigate && onNavigate('asistente', chatId)}
         />;
       case 'frecuencia':
-        return <TablasFrecuenciaView onBack={() => setCurrentView('hub')} />;
+        return <TablasFrecuenciaView
+          onBack={() => setCurrentView('hub')}
+          onNavigateToChat={(chatId) => onNavigate && onNavigate('asistente', chatId)}
+        />;
       case 'contingencia':
         return <TablasContingenciaView onBack={() => setCurrentView('hub')} />;
       case 'correlaciones':

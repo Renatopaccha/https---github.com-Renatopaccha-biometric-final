@@ -443,25 +443,124 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
   // Verificar si hay datos para habilitar acciones
   const hasData = segments.length > 0 && selectedVars.length > 0;
 
+  // Helper function to generate context for AI
+  const generateFrequencyContext = (): string => {
+    if (!selectedVars.length || !activeSegment) {
+      return "No hay datos disponibles.";
+    }
+
+    const currentData = (isEditing ? editedData : tablesData)[activeSegment] || [];
+    if (currentData.length === 0) {
+      return "No hay tablas de frecuencia disponibles.";
+    }
+
+    let context = `Análisis de Frecuencias${segmentBy ? ` (Segmento: ${activeSegment})` : ''}:\n\n`;
+
+    currentData.forEach(table => {
+      context += `Variable: ${table.variable}\n`;
+      context += `Total de casos: ${table.total}\n`;
+      context += `Distribución:\n`;
+
+      table.rows.forEach(row => {
+        if (row.categoria !== '(Perdidos)') {
+          context += `  - ${row.categoria}: ${row.frecuencia} casos (${row.porcentaje.toFixed(1)}%)\n`;
+        }
+      });
+
+      // Identify mode (highest frequency)
+      const validRows = table.rows.filter(r => r.categoria !== '(Perdidos)');
+      if (validRows.length > 0) {
+        const modeRow = validRows.reduce((max, row) => row.frecuencia > max.frecuencia ? row : max);
+        context += `  Moda: ${modeRow.categoria} (${modeRow.frecuencia} casos)\n`;
+      }
+      context += '\n';
+    });
+
+    return context;
+  };
+
   // Handler para interpretación con IA
-  const handleAIInterpretation = () => {
-    if (!hasData) return;
-    // Navegar al chat con contexto de frecuencias
-    if (onNavigateToChat) {
-      onNavigateToChat();
-    } else {
-      console.log('AI Interpretation requested for:', { sessionId, selectedVars, segmentBy });
-      alert('Función de interpretación IA: próximamente disponible');
+  const handleAIInterpretation = async () => {
+    if (analysisResult || isAnalyzing) return; // Ya existe o está cargando
+
+    if (selectedVars.length === 0) {
+      alert('Selecciona al menos una variable primero');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const frequencyContext = generateFrequencyContext();
+      const prompt = `Actúa como un bioestadístico. Analiza la siguiente tabla de frecuencias para las variables seleccionadas. Identifica la moda, la heterogeneidad de los grupos y cualquier desbalance notable. Sé breve y clínico.\n\n${frequencyContext}`;
+
+      const response = await sendChatMessage({
+        session_id: sessionId || undefined,
+        chat_id: activeChatId || undefined,
+        message: prompt,
+        history: []
+      });
+
+      if (response.success) {
+        setAnalysisResult(response.response);
+        if (response.chat_id) {
+          setActiveChatId(response.chat_id);
+        }
+      } else {
+        setError("No se pudo obtener la interpretación de IA.");
+      }
+    } catch (err) {
+      console.error("AI Error:", err);
+      setError("Error de conexión con el servicio de IA.");
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
   // Handler para continuar al chat
-  const handleContinueToChat = () => {
-    if (onNavigateToChat) {
-      onNavigateToChat();
-    } else {
-      console.log('Navigate to chat requested');
-      alert('Navegación al chat: próximamente disponible');
+  const handleContinueToChat = async () => {
+    if (!onNavigateToChat || !sessionId) return;
+
+    let finalChatId = activeChatId;
+
+    try {
+      setIsNavigating(true);
+
+      // Si no hay análisis previo, enviar contexto silenciosamente
+      if (!activeChatId) {
+        const frequencyContext = generateFrequencyContext();
+        const interpretationContext = analysisResult
+          ? `\n\nInterpretación Previa Realizada:\n${analysisResult}`
+          : '\n\n(El usuario aún no ha solicitado una interpretación automática)';
+
+        const handoffMessage = `**SYSTEM CONTEXT HANDOFF**
+        
+Estás recibiendo el contexto de la sesión actual de "Tablas de Frecuencia" para asistir al usuario.
+
+DATOS ESTRUCTURADOS:
+${frequencyContext}
+${interpretationContext}
+
+INSTRUCCIÓN:
+El usuario ha sido transferido al chat principal. Mantén este contexto en memoria para responder preguntas sobre estas variables. Saluda brevemente confirmando que tienes los datos.`;
+
+        const response = await sendChatMessage({
+          session_id: sessionId,
+          chat_id: activeChatId || undefined,
+          message: handoffMessage,
+          history: []
+        });
+
+        if (response.chat_id) {
+          finalChatId = response.chat_id;
+          setActiveChatId(response.chat_id);
+        }
+      }
+
+    } catch (error) {
+      console.error("Error transfiriendo contexto:", error);
+    } finally {
+      setIsNavigating(false);
+      onNavigateToChat(finalChatId || undefined);
     }
   };
 
@@ -729,6 +828,54 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
             </div>
           )}
 
+          {/* Panel de Análisis IA */}
+          {(analysisResult || isAnalyzing) && (
+            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-200 shadow-sm relative overflow-hidden transition-all duration-300">
+              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+
+              <div className="p-6 relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+                      {isAnalyzing ? (
+                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                      ) : (
+                        <Sparkles className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {isAnalyzing ? 'Analizando tabla de frecuencias...' : `Análisis de Frecuencia: ${selectedVars.join(', ')}`}
+                    </h3>
+                  </div>
+                  {!isAnalyzing && (
+                    <button
+                      onClick={() => setAnalysisResult(null)}
+                      className="p-1 hover:bg-black/5 rounded-full transition-colors text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 border border-indigo-100 min-h-[100px]">
+                  {isAnalyzing ? (
+                    <div className="space-y-3 animate-pulse">
+                      <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-1/2"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm prose-indigo max-w-none text-slate-700">
+                      {analysisResult!.split('\n').map((line, i) => (
+                        <p key={i} className="mb-2 last:mb-0">{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Segment Tabs */}
           {!isLoading && !error && segments.length > 1 && (
             <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
@@ -741,8 +888,8 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
                     key={segment}
                     onClick={() => setActiveSegment(segment)}
                     className={`px-4 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${activeSegment === segment
-                        ? 'text-teal-700'
-                        : 'text-slate-600 hover:text-slate-900'
+                      ? 'text-teal-700'
+                      : 'text-slate-600 hover:text-slate-900'
                       }`}
                   >
                     {segment}
@@ -782,6 +929,8 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
           onExportPDF={handleExportPDF}
           onAIInterpretation={handleAIInterpretation}
           onContinueToChat={handleContinueToChat}
+          isAnalyzing={isAnalyzing}
+          isNavigating={isNavigating}
         />
       )}
     </div>
