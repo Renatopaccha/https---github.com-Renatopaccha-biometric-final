@@ -148,11 +148,23 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   const showMethodTabs = method === 'comparar_todos';
   const showSegmentTabs = segmentBy !== '';
 
-  // Segment options based on selected variable
-  const segmentOptions = segmentBy === 'Género' ? ['General', 'Masculino', 'Femenino'] :
-    segmentBy === 'Grupo_Control' ? ['General', 'Control', 'Tratamiento'] :
-      ['General'];
+  // Segment options based on actual data from API (dynamic)
+  const segmentOptions = correlationData && correlationData.segments.length > 0
+    ? correlationData.segments
+    : ['General'];
 
+  // Auto-update activeSegmentTab when correlationData changes
+  useEffect(() => {
+    if (correlationData && correlationData.segments.length > 0) {
+      // Always set to first available segment when new data arrives
+      setActiveSegmentTab(correlationData.segments[0]);
+    }
+  }, [correlationData]);
+
+  // Reset activeSegmentTab when user changes segmentBy selector
+  useEffect(() => {
+    setActiveSegmentTab('General');
+  }, [segmentBy]);
   return (
     <div className="h-full flex flex-col bg-slate-50">
       {/* Header */}
