@@ -1379,3 +1379,171 @@ def interpret_crosstab(raw_df: pd.DataFrame,
         inf = f"No se encontró evidencia estadística de asociación (p = {chi2_p:.3f})."
         
     return f"{desc} {inf}"
+
+
+def calculate_correlations(
+    df: pd.DataFrame,
+    columns: List[str],
+    methods: Optional[List[str]] = None,
+    group_by: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Calcula matrices de correlación para variables numéricas con múltiples métodos.
+    
+    Args:
+        df: DataFrame de pandas con los datos.
+        columns: Lista de nombres de columnas numéricas a correlacionar (mínimo 2).
+        methods: Lista de métodos a usar: 'pearson', 'spearman', 'kendall'.
+                 Por defecto: ['pearson'].
+        group_by: Opcional. Nombre de columna categórica para segmentar resultados.
+    
+    Returns:
+        Diccionario con estructura:
+        {
+            "method_name": {
+                "segment_name": {
+                    "matrix": [[r11, r12, ...], ...],  # Coeficientes correlación
+                    "p_values": [[p11, p12, ...], ...],  # P-valores
+                    "sample_sizes": [[n11, n12, ...], ...],  # Tamaños muestra
+                    "variables": ["var1", "var2", ...]  # Nombres variables
+                }
+            }
+        }
+    
+    Raises:
+        ValueError: Si hay menos de 2 columnas, columnas no existen, o son no numéricas.
+    
+    Examples:
+        >>> result = calculate_correlations(
+        ...     df, 
+        ...     columns=['age', 'bmi', 'glucose'],
+        ...     methods=['pearson', 'spearman'],
+        ...     group_by='gender'
+        ... )
+        >>> pearson_male = result['pearson']['Male']
+        >>> r_age_bmi = pearson_male['matrix'][0][1]  # Correlación edad-IMC
+    """
+    #  Importar funciones de scipy
+    from scipy.stats import pearsonr, spearmanr, kendalltau
+    
+    # 1. Validaciones iniciales
+    if methods is None:
+        methods = ['pearson']
+    
+    if len(columns) < 2:
+        raise ValueError("Se requieren al menos 2 variables para calcular correlaciones")
+    
+    # Verificar que las columnas existen
+    missing_cols = [col for col in columns if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Columnas no encontradas: {', '.join(missing_cols)}")
+    
+    # Verificar métodos válidos
+    valid_methods = ['pearson', 'spearman', 'kendall']
+    for method in methods:
+        if method not in valid_methods:
+            raise ValueError(f"Método inválido: {method}. Use: {', '.join(valid_methods)}")
+    
+    # 2. Convertir columnas a numéricas y validar
+    numeric_df = df[columns].copy()
+    for col in columns:
+        numeric_df[col] = pd.to_numeric(numeric_df[col], errors='coerce')
+    
+    # Verificar que al menos tenemos datos válidos
+    valid_data = numeric_df.dropna(how='all')
+    if len(valid_data) < 3:
+        raise ValueError("Datos insuficientes: se requieren al menos 3 observaciones válidas")
+    
+    # 3. Determinar segmentos
+    segments = {}
+    if group_by:
+        if group_by not in df.columns:
+            raise ValueError(f"Columna de agrupación '{group_by}' no encontrada")
+        
+        # Crear segmentos por cada valor único del grupo
+        for group_value in df[group_by].dropna().unique():
+            mask = df[group_by] == group_value
+            segments[str(group_value)] = numeric_df[mask]
+    else:
+        # Sin segmentación: un solo segmento "General"
+        segments["General"] = numeric_df
+    
+    # 4. Calcular correlaciones para cada método y segmento
+    results = {}
+    
+    for method in methods:
+        results[method] = {}
+        
+        for segment_name, segment_df in segments.items():
+            # Limpiar datos del segmento
+            clean_segment = segment_df.dropna(how='all')
+            
+            if len(clean_segment) < 3:
+                # Segmento con datos insuficientes
+                n_vars = len(columns)
+                results[method][segment_name] = {
+                    "matrix": [[None] * n_vars for _ in range(n_vars)],
+                    "p_values": [[None] * n_vars for _ in range(n_vars)],
+                    "sample_sizes": [[None] * n_vars for _ in range(n_vars)],
+                    "variables": columns
+                }
+                continue
+            
+            # Inicializar matrices
+            n_vars = len(columns)
+            correlation_matrix = [[None] * n_vars for _ in range(n_vars)]
+            p_value_matrix = [[None] * n_vars for _ in range(n_vars)]
+            sample_size_matrix = [[None] * n_vars for _ in range(n_vars)]
+            
+            # Calcular correlaciones para cada par de variables
+            for i, var1 in enumerate(columns):
+                for j, var2 in enumerate(columns):
+                    try:
+                        # Obtener datos válidos para este par
+                        pair_data = clean_segment[[var1, var2]].dropna()
+                        n_valid = len(pair_data)
+                        
+                        if n_valid < 3:
+                            # Datos insuficientes para este par
+                            correlation_matrix[i][j] = None
+                            p_value_matrix[i][j] = None
+                            sample_size_matrix[i][j] = n_valid
+                            continue
+                        
+                        # Diagonal: correlación perfecta
+                        if i == j:
+                            correlation_matrix[i][j] = 1.0
+                            p_value_matrix[i][j] = 0.0
+                            sample_size_matrix[i][j] = n_valid
+                            continue
+                        
+                        # Calcular correlación según el método
+                        x = pair_data[var1].values
+                        y = pair_data[var2].values
+                        
+                        if method == 'pearson':
+                            r, p = pearsonr(x, y)
+                        elif method == 'spearman':
+                            r, p = spearmanr(x, y)
+                        elif method == 'kendall':
+                            r, p = kendalltau(x, y)
+                        
+                        correlation_matrix[i][j] = float(r)
+                        p_value_matrix[i][j] = float(p)
+                        sample_size_matrix[i][j] = n_valid
+                        
+                    except Exception as e:
+                        # Error en cálculo: marcar como None
+                        correlation_matrix[i][j] = None
+                        p_value_matrix[i][j] = None
+                        sample_size_matrix[i][j] = 0
+            
+            # Guardar resultados del segmento
+            results[method][segment_name] = {
+                "matrix": correlation_matrix,
+                "p_values": p_value_matrix,
+                "sample_sizes": sample_size_matrix,
+                "variables": columns
+            }
+    
+    return results

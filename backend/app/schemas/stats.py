@@ -509,3 +509,130 @@ class DescriptiveStatsResponse(BaseResponse):
                 "groups": ["Control", "Treatment"]
             }
         }
+
+
+# =============================================================================
+# CORRELATION ANALYSIS
+# =============================================================================
+
+class CorrelationPairData(BaseModel):
+    """Datos de correlación para un par de variables."""
+    
+    r: Optional[float] = Field(None, description="Coeficiente de correlación")
+    p_value: Optional[float] = Field(None, description="P-valor del test")
+    n: Optional[int] = Field(None, description="Tamaño de muestra para este par")
+    is_significant: bool = Field(False, description="True si p < 0.05")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "r": 0.854,
+                "p_value": 0.000,
+                "n": 5594,
+                "is_significant": True
+            }
+        }
+
+
+class CorrelationMatrixResult(BaseModel):
+    """Matriz de correlación para un método y segmento específicos."""
+    
+    method: str = Field(..., description="Método usado: pearson, spearman, kendall")
+    variables: List[str] = Field(..., description="Lista de variables en la matriz")
+    matrix: Dict[str, Dict[str, CorrelationPairData]] = Field(
+        ..., description="Matriz como {var1: {var2: CorrelationPairData}}"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "method": "pearson",
+                "variables": ["age", "bmi"],
+                "matrix": {
+                    "age": {
+                        "age": {"r": 1.0, "p_value": 0.0, "n": 100, "is_significant": False},
+                        "bmi": {"r": 0.145, "p_value": 0.042, "n": 98, "is_significant": True}
+                    },
+                    "bmi": {
+                        "age": {"r": 0.145, "p_value": 0.042, "n": 98, "is_significant": True},
+                        "bmi": {"r": 1.0, "p_value": 0.0, "n": 100, "is_significant": False}
+                    }
+                }
+            }
+        }
+
+
+class CorrelationRequest(BaseModel):
+    """Request para cálculo de correlaciones."""
+    
+    session_id: str = Field(..., description="Session ID del dataset")
+    columns: List[str] = Field(..., description="Variables numéricas a correlacionar (mín. 2)")
+    methods: List[str] = Field(
+        default=["pearson"], 
+        description="Métodos: 'pearson', 'spearman', 'kendall'"
+    )
+    group_by: Optional[str] = Field(None, description="Variable para segmentar resultados")
+    
+    @validator('session_id')
+    def validate_session_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("session_id cannot be empty")
+        return v.strip()
+    
+    @validator('columns')
+    def validate_min_columns(cls, v: List[str]) -> List[str]:
+        if len(v) < 2:
+            raise ValueError("Se requieren al menos 2 variables para correlacionar")
+        return v
+    
+    @validator('methods')
+    def validate_methods(cls, v: List[str]) -> List[str]:
+        valid = ['pearson', 'spearman', 'kendall']
+        for method in v:
+            if method not in valid:
+                raise ValueError(f"Método inválido: {method}. Use: {', '.join(valid)}")
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "columns": ["age", "bmi", "glucose"],
+                "methods": ["pearson", "spearman"],
+                "group_by": "gender"
+            }
+        }
+
+
+class CorrelationResponse(BaseResponse):
+    """Response con matrices de correlación."""
+    
+    session_id: str = Field(..., description="Session ID del dataset")
+    segments: List[str] = Field(..., description="Segmentos analizados")
+    tables: Dict[str, Dict[str, CorrelationMatrixResult]] = Field(
+        ..., description="Matrices por segmento y método: {segment: {method: matrix}}"
+    )
+    segment_by: Optional[str] = Field(None, description="Variable de segmentación")
+    analyzed_columns: List[str] = Field(..., description="Columnas incluidas en el análisis")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Correlation matrices calculated for 3 variables using 2 method(s)",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "segments": ["General"],
+                "tables": {
+                    "General": {
+                        "pearson": {
+                            "method": "pearson",
+                            "variables": ["age", "bmi"],
+                            "matrix": {}
+                        }
+                    }
+                },
+                "segment_by": None,
+                "analyzed_columns": ["age", "bmi", "glucose"]
+            }
+        }
+

@@ -16,6 +16,8 @@ from app.schemas.stats import (
     FrequencyResponse,
     ContingencyTableRequest,
     ContingencyTableResponse,
+    CorrelationRequest,
+    CorrelationResponse,
 )
 from app.services.descriptive_service import (
     DescriptiveService, 
@@ -368,4 +370,189 @@ async def calculate_contingency_table(request: ContingencyTableRequest) -> Conti
         row_totals=first_table.row_totals,
         col_totals=first_table.col_totals,
         grand_total=first_table.grand_total
+    )
+
+
+@router.post("/correlations", response_model=CorrelationResponse)
+async def calculate_correlations_endpoint(request: CorrelationRequest) -> CorrelationResponse:
+    """
+    Calculate correlation matrices for numeric variables with multiple methods.
+    
+    **Features:**
+    - **Multiple Methods**: Pearson (linear), Spearman (monotonic), Kendall (rank)
+    - **Pairwise Complete Observations**: Uses only valid pairs for each correlation
+    - **Significance Testing**: Automatic p-value calculation for hypothesis testing
+    - **Segmentation**: Optional grouping by categorical variable
+    
+    **Correlation Methods:**
+    - **Pearson**: Measures linear correlation. Assumes normality and homoscedasticity.
+      Best for: Continuous variables with linear relationships.
+    - **Spearman**: Measures monotonic correlation using ranks. Non-parametric.
+      Best for: Ordinal data or non-normally distributed continuous variables.
+    - **Kendall**: Measures concordance between rankings. More robust for small samples.
+      Best for: Small sample sizes or data with many tied ranks.
+    
+    **Interpretation:**
+    - |r| = 1.0: Perfect correlation
+    - |r| >= 0.7: Strong correlation
+    - 0.4 <= |r| < 0.7: Moderate correlation
+    - 0.2 <= |r| < 0.4: Weak correlation
+    - |r| < 0.2: Very weak or no correlation
+    - Positive r: Variables move together
+    - Negative r: Variables move inversely
+    
+    **P-value Significance:**
+    - p < 0.001: *** (highly significant)
+    - p < 0.01: ** (very significant)
+    - p < 0.05: * (significant)
+    - p >= 0.05: Not significant
+    
+    Args:
+        request: CorrelationRequest containing:
+            - session_id: Dataset session identifier
+            - columns: List of numeric variables (minimum 2)
+            - methods: List of correlation methods to apply
+            - group_by: Optional categorical variable for segmentation
+    
+    Returns:
+        CorrelationResponse with:
+            - tables: Nested dict {segment: {method: CorrelationMatrixResult}}
+            - segments: List of segment names
+            - analyzed_columns: Variables included in analysis
+    
+    Raises:
+        HTTPException 404: If session not found or expired
+        HTTPException 400: If columns invalid, non-numeric, or insufficient data
+        HTTPException 500: If calculation fails
+    
+    Examples:
+        ```python
+        # Request for Pearson correlation between Age, BMI, and Glucose
+        {
+            "session_id": "abc123",
+            "columns": ["age", "bmi", "glucose"],
+            "methods": ["pearson"],
+            "group_by": null
+        }
+        
+        # Request for all methods segmented by gender
+        {
+            "session_id": "abc123",
+            "columns": ["age", "bmi"],
+            "methods": ["pearson", "spearman", "kendall"],
+            "group_by": "gender"
+        }
+        ```
+    """
+    # 1. Retrieve DataFrame from session
+    try:
+        df = data_manager.get_dataframe(request.session_id)
+    except SessionNotFoundException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message
+        )
+    
+    # 2. Validate columns exist
+    missing_cols = [col for col in request.columns if col not in df.columns]
+    if missing_cols:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Columns not found in dataset: {', '.join(missing_cols)}"
+        )
+    
+    # 3. Validate group_by if provided
+    segments = ["General"]
+    if request.group_by:
+        if request.group_by not in df.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Group column '{request.group_by}' not found in dataset"
+            )
+        try:
+            segments = sorted(df[request.group_by].dropna().unique().astype(str).tolist())
+            if len(segments) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Group column '{request.group_by}' has no valid values"
+                )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error processing group column: {str(e)}"
+            )
+    
+    # 4. Calculate correlations using core function
+    try:
+        from app.internal.stats.core import calculate_correlations
+        
+        result = calculate_correlations(
+            df=df,
+            columns=request.columns,
+            methods=request.methods,
+            group_by=request.group_by
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating correlations: {str(e)}"
+        )
+    
+    # 5. Convert raw result to Pydantic models
+    from app.schemas.stats import CorrelationMatrixResult, CorrelationPairData
+    
+    tables = {}
+    for segment in segments:
+        tables[segment] = {}
+        for method in request.methods:
+            matrix_data = result[method][segment]
+            
+            # Convert nested lists to CorrelationPairData dict structure
+            matrix_dict = {}
+            for i, var1 in enumerate(matrix_data["variables"]):
+                matrix_dict[var1] = {}
+                for j, var2 in enumerate(matrix_data["variables"]):
+                    r_val = matrix_data["matrix"][i][j]
+                    p_val = matrix_data["p_values"][i][j]
+                    n_val = matrix_data["sample_sizes"][i][j]
+                    
+                    matrix_dict[var1][var2] = CorrelationPairData(
+                        r=r_val,
+                        p_value=p_val,
+                        n=n_val,
+                        is_significant=(p_val is not None and p_val < 0.05)
+                    )
+            
+            tables[segment][method] = CorrelationMatrixResult(
+                method=method,
+                variables=matrix_data["variables"],
+                matrix=matrix_dict
+            )
+    
+    # 6. Build success message
+    if request.group_by:
+        message = (
+            f"Correlation matrices calculated: {len(request.columns)} variables, "
+            f"{len(request.methods)} method(s), segmented by {request.group_by} ({len(segments)} segments)"
+        )
+    else:
+        message = (
+            f"Correlation matrices calculated: {len(request.columns)} variables "
+            f"using {len(request.methods)} method(s)"
+        )
+    
+    # 7. Return comprehensive response
+    return CorrelationResponse(
+        success=True,
+        message=message,
+        session_id=request.session_id,
+        segments=segments,
+        tables=tables,
+        segment_by=request.group_by,
+        analyzed_columns=request.columns
     )
