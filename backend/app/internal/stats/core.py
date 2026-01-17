@@ -1429,10 +1429,14 @@ def calculate_correlations(
     # 1. Validaciones iniciales
     if methods is None:
         methods = ['pearson']
+
+    normalized_methods = [method.lower() for method in methods]
     
     # Expandir 'all' o 'comparar_todos'
-    if 'all' in methods or 'comparar_todos' in methods:
-        methods = ['pearson', 'spearman', 'kendall']
+    if 'all' in normalized_methods or 'comparar_todos' in normalized_methods:
+        normalized_methods = ['pearson', 'spearman', 'kendall']
+
+    methods = normalized_methods
 
     if len(columns) < 2:
         raise ValueError("Se requieren al menos 2 variables para calcular correlaciones")
