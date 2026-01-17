@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import type { DatasetHealthReport, DataRow } from '../types/api';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
@@ -29,8 +29,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Helper to persist session ID
-    const setSessionId = (id: string | null) => {
+    // Helper to persist session ID - memoized to prevent unnecessary re-renders
+    const setSessionId = useCallback((id: string | null) => {
         setSessionIdState(id);
         if (id) {
             localStorage.setItem('biometric_session_id', id);
@@ -42,7 +42,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             setTotalRows(0);
             setHealthReport(null);
         }
-    };
+    }, []);
 
     // Restore session on mount
     useEffect(() => {
@@ -121,21 +121,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // but if session is restored, we might want to fetch initial state.
     // We'll let the consumer (DataTable) trigger the specific fetch with pagination parameters.
 
+    // Memoize context value to prevent unnecessary re-renders
+    const contextValue = useMemo(() => ({
+        sessionId,
+        setSessionId,
+        data,
+        setData,
+        columns,
+        setColumns,
+        totalRows,
+        healthReport,
+        isLoading,
+        error,
+        refreshData,
+        refreshHealthReport
+    }), [
+        sessionId,
+        setSessionId,
+        data,
+        columns,
+        totalRows,
+        healthReport,
+        isLoading,
+        error,
+        refreshData,
+        refreshHealthReport
+    ]);
+
     return (
-        <DataContext.Provider value={{
-            sessionId,
-            setSessionId,
-            data,
-            setData,
-            columns,
-            setColumns,  // ✅ NUEVO: Exponemos setColumns al contexto
-            totalRows,
-            healthReport,
-            isLoading,
-            error,
-            refreshData,
-            refreshHealthReport
-        }}>
+        <DataContext.Provider value={contextValue}>
             {children}
         </DataContext.Provider>
     );

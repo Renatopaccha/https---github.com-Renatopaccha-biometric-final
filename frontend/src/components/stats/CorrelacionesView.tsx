@@ -1,5 +1,5 @@
 import { ArrowLeft, ChevronDown, Plus, Trash2, Filter, ChevronRight, Play } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ActionToolbar } from './ActionToolbar';
 import { useCorrelations, CorrelationResponse } from '../../hooks/useCorrelations';
 import { useDataContext } from '../../context/DataContext';
@@ -54,6 +54,9 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   const varsRef = useRef<HTMLDivElement>(null);
   const methodRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
+
+  // Create stable key for selectedVars to avoid unnecessary re-renders
+  const selectedVarsKey = useMemo(() => selectedVars.join(','), [selectedVars]);
 
   // Debounce configuration changes to avoid excessive API calls
 
@@ -118,9 +121,8 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
       clearTimeout(timer);
     };
 
-    // DEPENDENCIES: Use JSON.stringify for deep comparison of selectedVars
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(selectedVars), method, activeSegmentTab, sessionId, calculateCorrelations]);
+    // DEPENDENCIES: Use selectedVarsKey for stable reference instead of JSON.stringify
+  }, [selectedVarsKey, method, activeSegmentTab, sessionId, calculateCorrelations]);
 
 
   // Get numeric variables from available columns
