@@ -38,6 +38,7 @@ export const useCorrelations = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const requestIdRef = useRef<number>(0);
 
     const calculateCorrelations = useCallback(async (
         sessionId: string,
@@ -49,6 +50,10 @@ export const useCorrelations = () => {
             console.warn('[useCorrelations] Invalid parameters:', { sessionId, columnsCount: columns.length });
             return null;
         }
+
+        // Request deduplication: increment request ID
+        const currentRequestId = ++requestIdRef.current;
+        console.log('[useCorrelations] Starting request #', currentRequestId);
 
         // Cancel previous request if exists (avoids race conditions)
         if (abortControllerRef.current) {
@@ -83,9 +88,16 @@ export const useCorrelations = () => {
             }
 
             const data: CorrelationResponse = await response.json();
-            console.log('[useCorrelations] ✅ Correlations received:', data);
-            setCorrelationData(data);
-            return data;
+
+            // Only update state if this is still the latest request (deduplication)
+            if (currentRequestId === requestIdRef.current) {
+                console.log('[useCorrelations] ✅ Correlations received for request #', currentRequestId);
+                setCorrelationData(data);
+                return data;
+            } else {
+                console.log('[useCorrelations] 🚫 Ignoring stale response from request #', currentRequestId, '(latest is #', requestIdRef.current, ')');
+                return null;
+            }
 
         } catch (err: any) {
             if (err.name === 'AbortError') {

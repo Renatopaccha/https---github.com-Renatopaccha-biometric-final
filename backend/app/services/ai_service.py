@@ -120,13 +120,16 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                 f"📊 **Dataset cargado:** {len(df)} filas × {len(df.columns)} columnas\n",
                 f"**Columnas disponibles:**"
             ]
-            
+
+            # Vectorized null count calculation (performance optimization)
+            null_counts = df.isnull().sum()
+            null_pcts = (null_counts / len(df) * 100)
+
             # List columns with data types
             for col in df.columns:
                 dtype = df[col].dtype
-                null_count = df[col].isnull().sum()
-                null_pct = (null_count / len(df) * 100)
-                
+                null_pct = null_pcts[col]
+
                 # Classify data type for user
                 if pd.api.types.is_numeric_dtype(df[col]):
                     type_label = "numérica"
@@ -134,7 +137,7 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                     type_label = "fecha/hora"
                 else:
                     type_label = "categórica/texto"
-                
+
                 context_parts.append(
                     f"  - `{col}` ({type_label}, {dtype}) - {null_pct:.1f}% nulos"
                 )

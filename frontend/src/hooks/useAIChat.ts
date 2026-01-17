@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
     sendChatMessage,
     listChatSessions,
@@ -54,6 +54,12 @@ export function useAIChat(): UseAIChatReturn {
         content: string;
         files?: File[];
     } | null>(null);
+
+    // Use ref to avoid recreating sendMessage on every message change (performance optimization)
+    const messagesRef = useRef<ChatMessage[]>(messages);
+    useEffect(() => {
+        messagesRef.current = messages;
+    }, [messages]);
 
     const loadChatSessions = useCallback(async () => {
         if (!sessionId) {
@@ -147,7 +153,8 @@ export function useAIChat(): UseAIChatReturn {
 
         try {
             // Prepare history without IDs for API (APIChatMessage format)
-            const historyForAPI: APIChatMessage[] = messages.map(msg => ({
+            // Use ref to avoid dependency on messages array
+            const historyForAPI: APIChatMessage[] = messagesRef.current.map(msg => ({
                 role: msg.role,
                 content: msg.content,
                 timestamp: msg.timestamp
@@ -235,7 +242,7 @@ export function useAIChat(): UseAIChatReturn {
         } finally {
             setIsLoading(false);
         }
-    }, [sessionId, chatId, messages, loadChatSessions]);
+    }, [sessionId, chatId, loadChatSessions]);
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessage) {
