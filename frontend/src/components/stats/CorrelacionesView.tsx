@@ -161,7 +161,8 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   };
 
   // Determine which tabs to show
-  const showMethodTabs = method === 'comparar_todos';
+  // In 'comparar_todos' mode, we show all 3 matrices vertically instead of using tabs
+  const showMethodTabs = false; // No method tabs - show inline for comparar_todos
   const showSegmentTabs = segmentBy !== '';
 
   // Generate unique key for tbody to force complete re-mount on data change
@@ -189,19 +190,21 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   }, [segmentBy]);
 
   // Helper function to render table rows - eliminates IIFE for better React reconciliation
-  const renderTableRows = () => {
+  // methodOverride: For 'comparar_todos' mode, we pass each method explicitly
+  const renderTableRows = (methodOverride?: 'pearson' | 'spearman' | 'kendall') => {
     if (!correlationData) {
       // Loading/error states are handled in the outer conditional
       return null;
     }
 
-    const currentMethod = showMethodTabs
-      ? activeMethodTab
-      : ((method === 'comparar_todos' as CorrelationMethod) ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
+    // Use methodOverride if provided (for Compare All mode), otherwise fall back to selected method
+    const currentMethod = methodOverride
+      ? methodOverride
+      : (method === 'comparar_todos' ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
     const availableSegments = correlationData?.segments || ['General'];
     const currentSegment = showSegmentTabs
       ? (availableSegments.includes(activeSegmentTab) ? activeSegmentTab : availableSegments[0])
-      : 'General';
+      : activeSegmentTab; // Always use activeSegmentTab for proper tracking
     const matrixData = correlationData?.tables?.[currentSegment]?.[currentMethod]?.matrix;
 
     if (!matrixData) {
@@ -686,62 +689,122 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
           <div className={`bg-white ${showMethodTabs || showSegmentTabs ? 'rounded-b-xl' : 'rounded-xl'} shadow-lg border border-slate-200 overflow-hidden`}>
             <div className="px-8 py-5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
               <p className="text-sm text-slate-600 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                <strong>Método activo:</strong> {showMethodTabs ? methodLabels[activeMethodTab] : methodLabels[method]}
-                {showSegmentTabs && ` • Segmento: ${activeSegmentTab}`}
+                <strong>Método activo:</strong> {methodLabels[method]}
+                {` • Segmento: `}<strong>{activeSegmentTab}</strong>
               </p>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
-                    <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                      Variable
-                    </th>
-                    <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                      Métrica
-                    </th>
-                    {selectedVars.map((variable) => (
-                      <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                        {variable}
+            {/* Conditional rendering: Compare All vs Single Method */}
+            {method === 'comparar_todos' ? (
+              // COMPARE ALL MODE: Render 3 matrices vertically
+              <div className="space-y-8">
+                {(['pearson', 'spearman', 'kendall'] as const).map((subMethod) => (
+                  <div key={subMethod} className="overflow-x-auto">
+                    {/* Method Header */}
+                    <div className="px-6 py-3 bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-teal-200">
+                      <h4 className="text-base font-bold text-slate-800" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                        {subMethod === 'pearson' ? 'Correlación de Pearson' : subMethod === 'spearman' ? 'rho de Spearman' : 'tau de Kendall'}
+                      </h4>
+                    </div>
+                    {/* Correlation Table for this method */}
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
+                          <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                            Variable
+                          </th>
+                          <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                            Métrica
+                          </th>
+                          {selectedVars.map((variable) => (
+                            <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                              {variable}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody key={`${tbodyKey}-${subMethod}`}>
+                        {!correlationData ? (
+                          <tr key="status-row">
+                            <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
+                              <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                {loading ? (
+                                  <div className="flex items-center justify-center gap-3">
+                                    <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                                    <span>Calculando correlaciones...</span>
+                                  </div>
+                                ) : error ? (
+                                  <div className="text-red-600">
+                                    <p className="font-medium">Error al calcular correlaciones</p>
+                                    <p className="text-sm mt-1">{error}</p>
+                                  </div>
+                                ) : (
+                                  <p>Seleccione al menos 2 variables numéricas para calcular correlaciones</p>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          renderTableRows(subMethod)
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              // SINGLE METHOD MODE: Render one table
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
+                      <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                        Variable
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody key={tbodyKey}>
-                  {!correlationData ? (
-                    <tr key="status-row">
-                      <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
-                        <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                          {loading ? (
-                            <div className="flex items-center justify-center gap-3">
-                              <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                              <span>Calculando correlaciones...</span>
-                            </div>
-                          ) : error ? (
-                            <div className="text-red-600">
-                              <p className="font-medium">Error al calcular correlaciones</p>
-                              <p className="text-sm mt-1">{error}</p>
-                            </div>
-                          ) : (
-                            <p>Seleccione al menos 2 variables numéricas para calcular correlaciones (Auto-cálculo)</p>
-                          )}
-                        </div>
-                      </td>
+                      <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                        Métrica
+                      </th>
+                      {selectedVars.map((variable) => (
+                        <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                          {variable}
+                        </th>
+                      ))}
                     </tr>
-                  ) : (
-                    renderTableRows()
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody key={tbodyKey}>
+                    {!correlationData ? (
+                      <tr key="status-row">
+                        <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
+                          <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                            {loading ? (
+                              <div className="flex items-center justify-center gap-3">
+                                <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                                <span>Calculando correlaciones...</span>
+                              </div>
+                            ) : error ? (
+                              <div className="text-red-600">
+                                <p className="font-medium">Error al calcular correlaciones</p>
+                                <p className="text-sm mt-1">{error}</p>
+                              </div>
+                            ) : (
+                              <p>Seleccione al menos 2 variables numéricas para calcular correlaciones (Auto-cálculo)</p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      renderTableRows()
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <div className="px-8 py-5 bg-gradient-to-b from-slate-50 to-slate-100 border-t-2 border-slate-300">
               <div className="flex items-start gap-6">
                 <div className="flex-1">
                   <p className="text-xs font-medium text-slate-700 mb-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    Método: {showMethodTabs ? methodLabels[activeMethodTab] : methodLabels[method]}
+                    Método: {methodLabels[method]}
                   </p>
                   <p className="text-xs text-slate-600 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                     Se resalta r cuando p {'<'} 0.05 (*), p {'<'} 0.01 (**) y p {'<'} 0.001 (***).
