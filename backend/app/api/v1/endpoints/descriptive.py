@@ -470,12 +470,13 @@ async def calculate_correlations_endpoint(request: CorrelationRequest) -> Correl
                 detail=f"Group column '{request.group_by}' not found in dataset"
             )
         try:
-            segments = sorted(df[request.group_by].dropna().unique().astype(str).tolist())
-            if len(segments) == 0:
+            group_segments = sorted(df[request.group_by].dropna().unique().astype(str).tolist())
+            if len(group_segments) == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Group column '{request.group_by}' has no valid values"
                 )
+            segments = ["General", *group_segments]
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

@@ -1429,10 +1429,14 @@ def calculate_correlations(
     # 1. Validaciones iniciales
     if methods is None:
         methods = ['pearson']
+
+    normalized_methods = [method.lower() for method in methods]
     
     # Expandir 'all' o 'comparar_todos'
-    if 'all' in methods or 'comparar_todos' in methods:
-        methods = ['pearson', 'spearman', 'kendall']
+    if 'all' in normalized_methods or 'comparar_todos' in normalized_methods:
+        normalized_methods = ['pearson', 'spearman', 'kendall']
+
+    methods = normalized_methods
 
     if len(columns) < 2:
         raise ValueError("Se requieren al menos 2 variables para calcular correlaciones")
@@ -1458,7 +1462,7 @@ def calculate_correlations(
         raise ValueError("Datos insuficientes: se requieren al menos 3 observaciones válidas")
     
     # 3. Determinar segmentos
-    segments = {}
+    segments = {"General": numeric_df}
     if group_by:
         if group_by not in df.columns:
             raise ValueError(f"Columna de agrupación '{group_by}' no encontrada")
@@ -1470,9 +1474,6 @@ def calculate_correlations(
             # Usando el índice para alinear
             mask = df[group_by] == group_value
             segments[str(group_value)] = numeric_df.loc[mask]
-    else:
-        # Sin segmentación: un solo segmento "General"
-        segments["General"] = numeric_df
     
     # 4. Calcular correlaciones para cada método y segmento
     results = {}
