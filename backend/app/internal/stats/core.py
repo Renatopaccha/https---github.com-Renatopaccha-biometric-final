@@ -1430,6 +1430,10 @@ def calculate_correlations(
     if methods is None:
         methods = ['pearson']
     
+    # Expandir 'all' o 'comparar_todos'
+    if 'all' in methods or 'comparar_todos' in methods:
+        methods = ['pearson', 'spearman', 'kendall']
+
     if len(columns) < 2:
         raise ValueError("Se requieren al menos 2 variables para calcular correlaciones")
     
@@ -1445,9 +1449,8 @@ def calculate_correlations(
             raise ValueError(f"Método inválido: {method}. Use: {', '.join(valid_methods)}")
     
     # 2. Convertir columnas a numéricas y validar
-    numeric_df = df[columns].copy()
-    for col in columns:
-        numeric_df[col] = pd.to_numeric(numeric_df[col], errors='coerce')
+    # Usar solo numéricas para evitar errores en .corr()
+    numeric_df = df[columns].apply(pd.to_numeric, errors='coerce')
     
     # Verificar que al menos tenemos datos válidos
     valid_data = numeric_df.dropna(how='all')
@@ -1461,9 +1464,12 @@ def calculate_correlations(
             raise ValueError(f"Columna de agrupación '{group_by}' no encontrada")
         
         # Crear segmentos por cada valor único del grupo
+        # Asegurar que group_by se alinea con el índice del numeric_df original
         for group_value in df[group_by].dropna().unique():
+            # Filtramos en el df original y luego tomamos las columnas numéricas ya procesadas
+            # Usando el índice para alinear
             mask = df[group_by] == group_value
-            segments[str(group_value)] = numeric_df[mask]
+            segments[str(group_value)] = numeric_df.loc[mask]
     else:
         # Sin segmentación: un solo segmento "General"
         segments["General"] = numeric_df
@@ -1475,69 +1481,77 @@ def calculate_correlations(
         results[method] = {}
         
         for segment_name, segment_df in segments.items():
-            # Limpiar datos del segmento
-            clean_segment = segment_df.dropna(how='all')
+            # Limpiar datos del segmento (pairwise complete deletion es standard en pandas .corr no, 
+            # pandas .corr usa pairwise exclusion por defecto, lo cual es bueno)
+            # Pero para P-values consistente, a veces se prefiere dropna() global del segmento o pairwise.
+            # Aquí usamos el dataframe del segmento tal cual venía (con NaNs).
+            # .corr() maneja NaNs excluyéndolos par a par.
             
-            if len(clean_segment) < 3:
-                # Segmento con datos insuficientes
+            # Verificar si hay suficientes datos en este segmento
+            clean_segment_check = segment_df.dropna(how='all')
+            if len(clean_segment_check) < 3:
+                 # Segmento vacio o insuficiente
                 n_vars = len(columns)
                 results[method][segment_name] = {
                     "matrix": [[None] * n_vars for _ in range(n_vars)],
                     "p_values": [[None] * n_vars for _ in range(n_vars)],
-                    "sample_sizes": [[None] * n_vars for _ in range(n_vars)],
+                    "sample_sizes": [[0] * n_vars for _ in range(n_vars)],
                     "variables": columns
                 }
                 continue
+
+            # A) Matriz de Correlación (R) - Pandas optimizado
+            # min_periods=3 para consistencia con restricción de N
+            r_matrix_df = segment_df.corr(method=method, min_periods=3)
             
-            # Inicializar matrices
+            # Convertir a lista de listas, reemplazando Nan por None
+            # Aseguramos e orden de columnas sea el mismo que input 'columns'
+            r_matrix_df = r_matrix_df.reindex(index=columns, columns=columns)
+            correlation_matrix = r_matrix_df.where(pd.notnull(r_matrix_df), None).values.tolist()
+            
+            # B) Matrices de P-values y N (Calculo manual necesario pues pandas no da p-values matrix)
+            # Para eficiencia, iteramos. Scipy es rápido.
             n_vars = len(columns)
-            correlation_matrix = [[None] * n_vars for _ in range(n_vars)]
             p_value_matrix = [[None] * n_vars for _ in range(n_vars)]
-            sample_size_matrix = [[None] * n_vars for _ in range(n_vars)]
+            sample_size_matrix = [[0] * n_vars for _ in range(n_vars)]
             
-            # Calcular correlaciones para cada par de variables
             for i, var1 in enumerate(columns):
                 for j, var2 in enumerate(columns):
-                    try:
-                        # Obtener datos válidos para este par
-                        pair_data = clean_segment[[var1, var2]].dropna()
-                        n_valid = len(pair_data)
+                    if i == j:
+                        p_value_matrix[i][j] = 0.0
+                        sample_size_matrix[i][j] = int(segment_df[var1].count())
+                        continue
+                    
+                    # Si ya calculamos simétrico (i > j), podríamos copiar, pero loop es cheap para < 100 vars.
+                    if i > j: 
+                        p_value_matrix[i][j] = p_value_matrix[j][i]
+                        sample_size_matrix[i][j] = sample_size_matrix[j][i]
+                        continue
                         
-                        if n_valid < 3:
-                            # Datos insuficientes para este par
-                            correlation_matrix[i][j] = None
-                            p_value_matrix[i][j] = None
-                            sample_size_matrix[i][j] = n_valid
-                            continue
-                        
-                        # Diagonal: correlación perfecta
-                        if i == j:
-                            correlation_matrix[i][j] = 1.0
-                            p_value_matrix[i][j] = 0.0
-                            sample_size_matrix[i][j] = n_valid
-                            continue
-                        
-                        # Calcular correlación según el método
-                        x = pair_data[var1].values
-                        y = pair_data[var2].values
-                        
-                        if method == 'pearson':
-                            r, p = pearsonr(x, y)
-                        elif method == 'spearman':
-                            r, p = spearmanr(x, y)
-                        elif method == 'kendall':
-                            r, p = kendalltau(x, y)
-                        
-                        correlation_matrix[i][j] = float(r)
-                        p_value_matrix[i][j] = float(p)
-                        sample_size_matrix[i][j] = n_valid
-                        
-                    except Exception as e:
-                        # Error en cálculo: marcar como None
-                        correlation_matrix[i][j] = None
+                    # Calculo pairwise exacto para P-Value
+                    # Solo obtenemos datos válidos pairwise
+                    pair_data = segment_df[[var1, var2]].dropna()
+                    n = len(pair_data)
+                    sample_size_matrix[i][j] = int(n)
+                    
+                    if n < 3:
                         p_value_matrix[i][j] = None
-                        sample_size_matrix[i][j] = 0
-            
+                        # También corregimos R a None si pandas lo calculó con < 3 (min_periods lo maneja pero doble check)
+                        correlation_matrix[i][j] = None
+                        continue
+                    
+                    try:
+                        if method == 'pearson':
+                            stat, p = pearsonr(pair_data[var1], pair_data[var2])
+                        elif method == 'spearman':
+                            stat, p = spearmanr(pair_data[var1], pair_data[var2])
+                        elif method == 'kendall':
+                            stat, p = kendalltau(pair_data[var1], pair_data[var2])
+                        
+                        p_value_matrix[i][j] = float(p)
+                    except:
+                        p_value_matrix[i][j] = None
+
             # Guardar resultados del segmento
             results[method][segment_name] = {
                 "matrix": correlation_matrix,

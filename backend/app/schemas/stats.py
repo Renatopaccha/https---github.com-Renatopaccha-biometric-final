@@ -587,7 +587,7 @@ class CorrelationRequest(BaseModel):
     
     @validator('methods')
     def validate_methods(cls, v: List[str]) -> List[str]:
-        valid = ['pearson', 'spearman', 'kendall']
+        valid = ['pearson', 'spearman', 'kendall', 'all', 'comparar_todos']
         for method in v:
             if method not in valid:
                 raise ValueError(f"Método inválido: {method}. Use: {', '.join(valid)}")

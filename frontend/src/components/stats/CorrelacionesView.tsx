@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ActionToolbar } from './ActionToolbar';
 import { useCorrelations, CorrelationResponse } from '../../hooks/useCorrelations';
 import { useDataContext } from '../../context/DataContext';
+import { useDebounce } from '../../hooks/useDebounce';
 
 interface CorrelacionesViewProps {
   onBack: () => void;
@@ -53,6 +54,60 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   const varsRef = useRef<HTMLDivElement>(null);
   const methodRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
+
+  // Debounce configuration changes to avoid excessive API calls
+  const configToDebounce = {
+    selectedVars,
+    method,
+    segmentBy
+  };
+
+  const debouncedConfig = useDebounce(configToDebounce, 500);
+
+  // Effect to trigger calculation automatically
+  useEffect(() => {
+    const { selectedVars, method, segmentBy } = debouncedConfig;
+
+    const generate = async () => {
+      // Requirements: Session ID and at least 2 variables
+      if (!sessionId || selectedVars.length < 2) {
+        // If we had data but now invalid config, clear it
+        if (selectedVars.length < 2 && correlationData) {
+          setCorrelationData(null);
+        }
+        return;
+      }
+
+      // Explicitly set null to show loading state in table if desired, 
+      // or keep old data while loading (better UX usually, but sticking to requested behavior)
+      // We will set to null to indicate 're-calculating' visibly if that's preferred,
+      // but for smoother UX, usually we keep data until new data arrives.
+      // However, to avoid 'insertBefore' stale data issues, clearing might be safer.
+      setCorrelationData(null);
+
+      const methods = method === 'comparar_todos'
+        ? ['pearson', 'spearman', 'kendall']
+        : [method];
+
+      const result = await calculateCorrelations(
+        sessionId,
+        selectedVars,
+        methods,
+        segmentBy || null
+      );
+
+      if (result) {
+        setCorrelationData(result);
+        if (method === 'comparar_todos') {
+          setActiveMethodTab('pearson');
+        }
+      } else {
+        setCorrelationData(null);
+      }
+    };
+
+    generate();
+  }, [debouncedConfig, sessionId]); // Depend on debounced config + session
 
   // Get numeric variables from available columns
   const numericVariables = availableColumns.length > 0 ? availableColumns : [
@@ -110,36 +165,6 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     setFilterRules(newRules);
   };
 
-  // Handle correlation generation
-  const handleGenerate = async () => {
-    if (!sessionId || selectedVars.length < 2) {
-      console.error('Need session ID and at least 2 variables');
-      return;
-    }
-
-    const methods = method === 'comparar_todos'
-      ? ['pearson', 'spearman', 'kendall']
-      : [method];
-
-    const result = await calculateCorrelations(
-      sessionId,
-      selectedVars,
-      methods,
-      segmentBy || null
-    );
-
-    if (result) {
-      setCorrelationData(result);
-      // If comparing all methods, set active tab to first method
-      if (method === 'comparar_todos') {
-        setActiveMethodTab('pearson');
-      }
-    } else {
-      // Critical: Reset local state when API fails to prevent rendering stale data
-      setCorrelationData(null);
-    }
-  };
-
   const getSignificance = (p: number): string => {
     if (p < 0.001) return '***';
     if (p < 0.01) return '**';
@@ -150,6 +175,12 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   // Determine which tabs to show
   const showMethodTabs = method === 'comparar_todos';
   const showSegmentTabs = segmentBy !== '';
+
+  // Generate unique key for tbody to force complete re-mount on data change
+  // Includes session_id to ensure uniqueness across different data loads
+  const tbodyKey = correlationData
+    ? `data-${showMethodTabs ? activeMethodTab : method}-${activeSegmentTab}-${selectedVars.length}-${correlationData.session_id}`
+    : 'empty';
 
   // Segment options based on actual data from API (dynamic)
   const segmentOptions = (correlationData?.segments?.length ?? 0) > 0
@@ -580,30 +611,6 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
               </div>
             )}
           </div>
-
-          {/* Generate Button */}
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleGenerate}
-              disabled={selectedVars.length < 2 || !sessionId || loading}
-              className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 
-                         transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-                         flex items-center gap-2 shadow-sm"
-              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Calculando...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  Generar Correlaciones
-                </>
-              )}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -693,12 +700,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                   </tr>
                 </thead>
 
-                <tbody
-                  key={correlationData
-                    ? `data-${showMethodTabs ? activeMethodTab : method}-${activeSegmentTab}-${selectedVars.length}`
-                    : 'empty'
-                  }
-                >
+                <tbody key={tbodyKey}>
                   {!correlationData ? (
                     <tr key="status-row">
                       <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
@@ -714,7 +716,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                               <p className="text-sm mt-1">{error}</p>
                             </div>
                           ) : (
-                            <p>Seleccione variables y haga clic en "Generar Correlaciones" para comenzar</p>
+                            <p>Seleccione variables para comenzar (Auto-cálculo)</p>
                           )}
                         </div>
                       </td>
