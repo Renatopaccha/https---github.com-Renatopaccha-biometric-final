@@ -58,49 +58,70 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   // Debounce configuration changes to avoid excessive API calls
 
 
-  // Effect to trigger calculation automatically
   // Effect to trigger calculation automatically with infinite-loop protection
   useEffect(() => {
+    console.log('[Correlaciones DEBUG] Effect triggered with:', {
+      selectedVars,
+      method,
+      activeSegmentTab,
+      sessionId,
+      varsCount: selectedVars.length
+    });
+
     // 1. Avoid firing if not enough variables
     if (selectedVars.length < 2) {
+      console.log('[Correlaciones DEBUG] Less than 2 variables, clearing data');
       if (correlationData) {
         setCorrelationData(null);
       }
       return;
     }
 
-    // 2. Avoid firing if already loading
-    if (loading) return;
+    // 2. Validate sessionId
+    if (!sessionId) {
+      console.warn('[Correlaciones DEBUG] No session ID available for correlations');
+      return;
+    }
 
     // 3. Manual debounce
     const timer = setTimeout(() => {
+      console.log('[Correlaciones DEBUG] Debounce complete, calling API with:', {
+        sessionId,
+        selectedVars,
+        method,
+        segment: activeSegmentTab
+      });
+
       const methods = method === 'comparar_todos'
         ? ['pearson', 'spearman', 'kendall']
         : [method];
 
       calculateCorrelations(
-        sessionId || '', // Ensure string
+        sessionId,
         selectedVars,
         methods,
         activeSegmentTab === 'General' ? null : activeSegmentTab
       ).then((result) => {
+        console.log('[Correlaciones DEBUG] API response received:', result ? 'success' : 'null');
         if (result) {
-          // Only update if method is comparer_todos to force tabs, 
-          // otherwise let the component state handle it.
-          // But we actually setCorrelationData inside the hook, 
-          // so here we might just handle side effects if needed.
           if (method === 'comparar_todos') {
             setActiveMethodTab('pearson');
           }
         }
+      }).catch((err) => {
+        console.error('[Correlaciones DEBUG] API call failed:', err);
       });
     }, 600);
 
-    return () => clearTimeout(timer); // Critical cleanup
+    return () => {
+      console.log('[Correlaciones DEBUG] Cleanup: clearing debounce timer');
+      clearTimeout(timer);
+    };
 
     // DEPENDENCIES: Use JSON.stringify for deep comparison of selectedVars
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(selectedVars), method, activeSegmentTab, sessionId]);
+  }, [JSON.stringify(selectedVars), method, activeSegmentTab, sessionId, calculateCorrelations]);
+
 
   // Get numeric variables from available columns
   const numericVariables = availableColumns.length > 0 ? availableColumns : [
@@ -709,7 +730,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                               <p className="text-sm mt-1">{error}</p>
                             </div>
                           ) : (
-                            <p>Seleccione variables para comenzar (Auto-cálculo)</p>
+                            <p>Seleccione al menos 2 variables numéricas para calcular correlaciones (Auto-cálculo)</p>
                           )}
                         </div>
                       </td>
