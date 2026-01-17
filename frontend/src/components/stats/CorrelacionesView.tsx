@@ -91,12 +91,17 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     return () => clearTimeout(timer);
   }, [selectedVarsKey, method, segmentBy, sessionId, calculateCorrelations]);
 
+  // Fetch columns from context when component mounts (if empty)
+  const { refreshData } = useDataContext();
+  useEffect(() => {
+    if (sessionId && availableColumns.length === 0) {
+      console.log('[CorrelacionesView] Columns empty, fetching from API...');
+      refreshData(0, 1); // Fetch minimal data just to get columns
+    }
+  }, [sessionId, availableColumns.length, refreshData]);
 
-  // Get numeric variables from available columns
-  const numericVariables = availableColumns.length > 0 ? availableColumns : [
-    'FormularioN°', 'Edad (años cumpl)', 'Peso [Kg]', 'Talla (cm)',
-    'Talla (m)', 'IMC', 'Glucosa [mg/dL]', 'Presión Arterial [mmHg]'
-  ];
+  // Use actual columns from context (no hardcoded fallback)
+  const numericVariables = availableColumns;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -443,7 +448,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
               </button>
 
               {showSegmentDropdown && (
-                <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10">
+                <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
                   <button
                     onClick={() => {
                       setSegmentBy('');
@@ -455,28 +460,20 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                   >
                     Sin segmentación
                   </button>
-                  <button
-                    onClick={() => {
-                      setSegmentBy('Género');
-                      setActiveSegmentTab('General');
-                      setShowSegmentDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm text-slate-900"
-                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                  >
-                    Género
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSegmentBy('Grupo_Control');
-                      setActiveSegmentTab('General');
-                      setShowSegmentDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm text-slate-900"
-                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                  >
-                    Grupo Control
-                  </button>
+                  {availableColumns.map((col) => (
+                    <button
+                      key={col}
+                      onClick={() => {
+                        setSegmentBy(col);
+                        setActiveSegmentTab('General');
+                        setShowSegmentDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm text-slate-900"
+                      style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                    >
+                      {col}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
