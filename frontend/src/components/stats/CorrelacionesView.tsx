@@ -9,16 +9,24 @@ interface CorrelacionesViewProps {
   onBack: () => void;
 }
 
-const numericVariables = [
-  'FormularioN°',
-  'Edad (años cumpl)',
-  'Peso [Kg]',
-  'Talla (cm)',
-  'Talla (m)',
-  'IMC',
-  'Glucosa [mg/dL]',
-  'Presión Arterial [mmHg]'
-];
+// Helper function to calculate heatmap color based on correlation coefficient
+const getCorrelationColor = (r: number | null): string => {
+  if (r === null) return 'transparent';
+
+  // Clamp r between -1 and 1
+  const clampedR = Math.max(-1, Math.min(1, r));
+
+  // Interpolate between red (-1), white (0), and blue (+1)
+  if (clampedR >= 0) {
+    // Positive: white to blue
+    const intensity = Math.round(clampedR * 255);
+    return `rgba(37, 99, 235, ${clampedR * 0.6 + 0.1})`; // Blue with varying opacity
+  } else {
+    // Negative: white to red
+    const intensity = Math.round(Math.abs(clampedR) * 255);
+    return `rgba(220, 38, 38, ${Math.abs(clampedR) * 0.6 + 0.1})`; // Red with varying opacity
+  }
+};
 
 type CorrelationMethod = 'comparar_todos' | 'pearson' | 'spearman' | 'kendall';
 
@@ -31,10 +39,7 @@ interface FilterRule {
 export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   // Context and hooks
   const { sessionId, columns: availableColumns } = useDataContext();
-  const { calculateCorrelations, loading, error } = useCorrelations();
-
-  // State for correlation data
-  const [correlationData, setCorrelationData] = useState<CorrelationResponse | null>(null);
+  const { correlationData, calculateCorrelations, loading, error } = useCorrelations();
 
   // UI state
   const [selectedVars, setSelectedVars] = useState<string[]>([]);
@@ -58,43 +63,15 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   // Create stable key for selectedVars to avoid unnecessary re-renders
   const selectedVarsKey = useMemo(() => selectedVars.join(','), [selectedVars]);
 
-  // Debounce configuration changes to avoid excessive API calls
-
-
-  // Effect to trigger calculation automatically with infinite-loop protection
+  // Effect to trigger calculation automatically with debounce
   useEffect(() => {
-    console.log('[Correlaciones DEBUG] Effect triggered with:', {
-      selectedVars,
-      method,
-      activeSegmentTab,
-      sessionId,
-      varsCount: selectedVars.length
-    });
-
     // 1. Avoid firing if not enough variables
-    if (selectedVars.length < 2) {
-      console.log('[Correlaciones DEBUG] Less than 2 variables, clearing data');
-      if (correlationData) {
-        setCorrelationData(null);
-      }
+    if (selectedVars.length < 2 || !sessionId) {
       return;
     }
 
-    // 2. Validate sessionId
-    if (!sessionId) {
-      console.warn('[Correlaciones DEBUG] No session ID available for correlations');
-      return;
-    }
-
-    // 3. Manual debounce
+    // 2. Manual debounce (500ms)
     const timer = setTimeout(() => {
-      console.log('[Correlaciones DEBUG] Debounce complete, calling API with:', {
-        sessionId,
-        selectedVars,
-        method,
-        segment: activeSegmentTab
-      });
-
       const methods = method === 'comparar_todos'
         ? ['pearson', 'spearman', 'kendall']
         : [method];
@@ -103,26 +80,16 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
         sessionId,
         selectedVars,
         methods,
-        activeSegmentTab === 'General' ? null : activeSegmentTab
+        segmentBy || null
       ).then((result) => {
-        console.log('[Correlaciones DEBUG] API response received:', result ? 'success' : 'null');
-        if (result) {
-          if (method === 'comparar_todos') {
-            setActiveMethodTab('pearson');
-          }
+        if (result && method === 'comparar_todos') {
+          setActiveMethodTab('pearson');
         }
-      }).catch((err) => {
-        console.error('[Correlaciones DEBUG] API call failed:', err);
       });
-    }, 600);
+    }, 500);
 
-    return () => {
-      console.log('[Correlaciones DEBUG] Cleanup: clearing debounce timer');
-      clearTimeout(timer);
-    };
-
-    // DEPENDENCIES: Use selectedVarsKey for stable reference instead of JSON.stringify
-  }, [selectedVarsKey, method, activeSegmentTab, sessionId, calculateCorrelations]);
+    return () => clearTimeout(timer);
+  }, [selectedVarsKey, method, segmentBy, sessionId, calculateCorrelations]);
 
 
   // Get numeric variables from available columns
@@ -200,12 +167,12 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
   // Segment options based on actual data from API (dynamic)
   const segmentOptions = (correlationData?.segments?.length ?? 0) > 0
-    ? correlationData.segments
+    ? correlationData!.segments
     : ['General'];
 
   // Auto-update activeSegmentTab when correlationData changes
   useEffect(() => {
-    if (correlationData?.segments?.length > 0) {
+    if (correlationData?.segments && correlationData.segments.length > 0) {
       // Always set to first available segment when new data arrives
       setActiveSegmentTab(correlationData.segments[0]);
     }
@@ -225,7 +192,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
     const currentMethod = showMethodTabs
       ? activeMethodTab
-      : (method === 'comparar_todos' ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
+      : ((method === 'comparar_todos' as CorrelationMethod) ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
     const availableSegments = correlationData?.segments || ['General'];
     const currentSegment = showSegmentTabs
       ? (availableSegments.includes(activeSegmentTab) ? activeSegmentTab : availableSegments[0])
@@ -279,22 +246,51 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
           const isDiagonal = rowVar === colVar;
           const isStrongCorrelation = pairData.r !== null && Math.abs(pairData.r) > 0.7 && !isDiagonal;
 
+          // Calculate heatmap background color
+          const bgColor = getCorrelationColor(pairData.r);
+          const textColor = pairData.r !== null && Math.abs(pairData.r) > 0.6 ? 'white' : 'inherit';
+
           return (
-            <td key={colVar} className="px-6 py-2 text-center border-b border-slate-200">
+            <td
+              key={colVar}
+              className="px-6 py-2 text-center border-b border-slate-200 transition-colors"
+              style={{ backgroundColor: bgColor }}
+            >
               <div className="py-2">
                 <div
-                  className={`pb-2 border-b border-slate-200 ${isDiagonal ? 'text-slate-400' : isStrongCorrelation ? 'text-slate-900' : 'text-slate-900'}`}
-                  style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: isDiagonal ? 500 : isStrongCorrelation ? 700 : 600, fontSize: '14px' }}
+                  className={`pb-2 border-b border-slate-200/50 ${isDiagonal ? 'text-slate-500' : ''}`}
+                  style={{
+                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace',
+                    fontWeight: isDiagonal ? 500 : isStrongCorrelation ? 700 : 600,
+                    fontSize: '14px',
+                    color: !isDiagonal ? textColor : undefined
+                  }}
                 >
                   {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
-                  {significance && <span className="text-teal-600 ml-0.5">{significance}</span>}
+                  {significance && <span className="ml-0.5" style={{ color: pairData.r !== null && Math.abs(pairData.r) > 0.6 ? '#fef08a' : '#0d9488' }}>{significance}</span>}
                 </div>
 
-                <div className="text-slate-700 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 600, fontSize: '13px' }}>
+                <div
+                  className="py-2 border-b border-slate-200/50 leading-relaxed"
+                  style={{
+                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    color: !isDiagonal ? textColor : '#64748b'
+                  }}
+                >
                   {pairData.p_value !== null ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)) : '—'}
                 </div>
 
-                <div className="text-slate-700 pt-2 leading-relaxed" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 600, fontSize: '13px' }}>
+                <div
+                  className="pt-2 leading-relaxed"
+                  style={{
+                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    color: !isDiagonal ? textColor : '#64748b'
+                  }}
+                >
                   {pairData.n !== null ? pairData.n : '—'}
                 </div>
               </div>
