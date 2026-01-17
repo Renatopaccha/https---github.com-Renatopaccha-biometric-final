@@ -1510,44 +1510,52 @@ def calculate_correlations(
             correlation_matrix = r_matrix_df.where(pd.notnull(r_matrix_df), None).values.tolist()
             
             # B) Matrices de P-values y N (Calculo manual necesario pues pandas no da p-values matrix)
-            # Para eficiencia, iteramos. Scipy es rápido.
+            # OPTIMIZACIÓN: Calcular solo triángulo superior y aprovechar simetría
             n_vars = len(columns)
             p_value_matrix = [[None] * n_vars for _ in range(n_vars)]
             sample_size_matrix = [[0] * n_vars for _ in range(n_vars)]
-            
+
+            # Pre-calcular máscaras de valores válidos para cada variable (optimización)
+            valid_masks = {col: segment_df[col].notna() for col in columns}
+
             for i, var1 in enumerate(columns):
                 for j, var2 in enumerate(columns):
+                    # Diagonal: self-correlation
                     if i == j:
                         p_value_matrix[i][j] = 0.0
                         sample_size_matrix[i][j] = int(segment_df[var1].count())
                         continue
-                    
-                    # Si ya calculamos simétrico (i > j), podríamos copiar, pero loop es cheap para < 100 vars.
-                    if i > j: 
+
+                    # Triángulo inferior: copiar del superior (simetría)
+                    if i > j:
                         p_value_matrix[i][j] = p_value_matrix[j][i]
                         sample_size_matrix[i][j] = sample_size_matrix[j][i]
                         continue
-                        
-                    # Calculo pairwise exacto para P-Value
-                    # Solo obtenemos datos válidos pairwise
-                    pair_data = segment_df[[var1, var2]].dropna()
-                    n = len(pair_data)
+
+                    # Triángulo superior: calcular p-values
+                    # Usar máscaras pre-calculadas para optimizar dropna()
+                    both_valid = valid_masks[var1] & valid_masks[var2]
+                    n = both_valid.sum()
                     sample_size_matrix[i][j] = int(n)
-                    
+
                     if n < 3:
                         p_value_matrix[i][j] = None
-                        # También corregimos R a None si pandas lo calculó con < 3 (min_periods lo maneja pero doble check)
+                        # También corregimos R a None si pandas lo calculó con < 3
                         correlation_matrix[i][j] = None
                         continue
-                    
+
                     try:
+                        # Extraer datos válidos usando la máscara (más rápido que dropna())
+                        var1_data = segment_df.loc[both_valid, var1]
+                        var2_data = segment_df.loc[both_valid, var2]
+
                         if method == 'pearson':
-                            stat, p = pearsonr(pair_data[var1], pair_data[var2])
+                            stat, p = pearsonr(var1_data, var2_data)
                         elif method == 'spearman':
-                            stat, p = spearmanr(pair_data[var1], pair_data[var2])
+                            stat, p = spearmanr(var1_data, var2_data)
                         elif method == 'kendall':
-                            stat, p = kendalltau(pair_data[var1], pair_data[var2])
-                        
+                            stat, p = kendalltau(var1_data, var2_data)
+
                         p_value_matrix[i][j] = float(p)
                     except:
                         p_value_matrix[i][j] = None
