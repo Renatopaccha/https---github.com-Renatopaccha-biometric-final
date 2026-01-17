@@ -134,6 +134,9 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
       if (method === 'comparar_todos') {
         setActiveMethodTab('pearson');
       }
+    } else {
+      // Critical: Reset local state when API fails to prevent rendering stale data
+      setCorrelationData(null);
     }
   };
 
@@ -149,13 +152,13 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   const showSegmentTabs = segmentBy !== '';
 
   // Segment options based on actual data from API (dynamic)
-  const segmentOptions = correlationData && correlationData.segments.length > 0
-    ? correlationData.segments
+  const segmentOptions = correlationData?.segments?.length > 0
+    ? correlationData.segments || ['General']
     : ['General'];
 
   // Auto-update activeSegmentTab when correlationData changes
   useEffect(() => {
-    if (correlationData && correlationData.segments.length > 0) {
+    if (correlationData?.segments && correlationData.segments.length > 0) {
       // Always set to first available segment when new data arrives
       setActiveSegmentTab(correlationData.segments[0]);
     }
@@ -601,9 +604,9 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                   </tr>
                 </thead>
 
-                <tbody>
-                  {!correlationData && (
-                    <tr>
+                <tbody key={correlationData ? 'data' : 'empty'}>
+                  {!correlationData ? (
+                    <tr key="status-row">
                       <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
                         <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                           {loading ? (
@@ -622,71 +625,88 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                         </div>
                       </td>
                     </tr>
-                  )}
-                  {correlationData && selectedVars.map((rowVar, rowIndex) => {
-                    const currentMethod = showMethodTabs ? activeMethodTab : (method === 'comparar_todos' ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
-                    const currentSegment = showSegmentTabs ? activeSegmentTab : 'General';
-                    const matrixData = correlationData.tables[currentSegment]?.[currentMethod]?.matrix;
+                  ) : (
+                    (() => {
+                      const currentMethod = showMethodTabs ? activeMethodTab : (method === 'comparar_todos' ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
+                      const availableSegments = correlationData?.segments || ['General'];
+                      const currentSegment = showSegmentTabs
+                        ? (availableSegments.includes(activeSegmentTab) ? activeSegmentTab : availableSegments[0])
+                        : 'General';
+                      const matrixData = correlationData.tables?.[currentSegment]?.[currentMethod]?.matrix;
 
-                    if (!matrixData) return null;
+                      if (!matrixData) {
+                        return (
+                          <tr key="no-data-row">
+                            <td colSpan={selectedVars.length + 2} className="px-6 py-4 text-center border-b border-slate-200 bg-amber-50/30">
+                              <p className="text-amber-700 text-sm" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                ⚠️ No hay datos disponibles para esta combinación de método y segmento.
+                              </p>
+                              <p className="text-amber-600 text-xs mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                Intente generar las correlaciones nuevamente o seleccione otra configuración.
+                              </p>
+                            </td>
+                          </tr>
+                        );
+                      }
 
-                    return (
-                      <tr key={rowVar} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'}>
-                        <td className="px-6 py-3 text-slate-900 align-top border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                          {rowVar}
-                        </td>
+                      return selectedVars.map((rowVar, rowIndex) => (
+                        <tr key={`${currentSegment}-${currentMethod}-${rowVar}`} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'}>
+                          <td className="px-6 py-3 text-slate-900 align-top border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                            {rowVar}
+                          </td>
 
-                        <td className="px-4 py-2 align-top border-b border-slate-200 bg-slate-50/30">
-                          <div className="flex flex-col py-2">
-                            <div className="text-slate-600 pb-2 border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 600, fontSize: '13px' }}>Coef. (r)</div>
-                            <div className="text-slate-600 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>p-valor</div>
-                            <div className="text-slate-600 pt-2 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>N</div>
-                          </div>
-                        </td>
+                          <td className="px-4 py-2 align-top border-b border-slate-200 bg-slate-50/30">
+                            <div className="flex flex-col py-2">
+                              <div className="text-slate-600 pb-2 border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 600, fontSize: '13px' }}>Coef. (r)</div>
+                              <div className="text-slate-600 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>p-valor</div>
+                              <div className="text-slate-600 pt-2 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>N</div>
+                            </div>
+                          </td>
 
-                        {selectedVars.map((colVar) => {
-                          const pairData = matrixData[rowVar]?.[colVar];
-                          if (!pairData) {
+                          {selectedVars.map((colVar) => {
+                            const pairData = matrixData[rowVar]?.[colVar];
+                            if (!pairData) {
+                              return (
+                                <td key={colVar} className="px-6 py-2 text-center border-b border-slate-200">
+                                  <div className="py-2">
+                                    <div className="text-slate-400 pb-2 border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '14px' }}>—</div>
+                                    <div className="text-slate-400 py-2 border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '13px' }}>—</div>
+                                    <div className="text-slate-400 pt-2" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '13px' }}>—</div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
+                            const isDiagonal = rowVar === colVar;
+                            const isStrongCorrelation = pairData.r !== null && Math.abs(pairData.r) > 0.7 && !isDiagonal;
+
                             return (
                               <td key={colVar} className="px-6 py-2 text-center border-b border-slate-200">
                                 <div className="py-2">
-                                  <div className="text-slate-400 pb-2 border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '14px' }}>—</div>
-                                  <div className="text-slate-400 py-2 border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '13px' }}>—</div>
-                                  <div className="text-slate-400 pt-2" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '13px' }}>—</div>
+                                  <div
+                                    className={`pb-2 border-b border-slate-200 ${isDiagonal ? 'text-slate-400' : isStrongCorrelation ? 'text-slate-900' : 'text-slate-900'}`}
+                                    style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: isDiagonal ? 500 : isStrongCorrelation ? 700 : 600, fontSize: '14px' }}
+                                  >
+                                    {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
+                                    {significance && <span className="text-teal-600 ml-0.5">{significance}</span>}
+                                  </div>
+
+                                  <div className="text-slate-700 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 600, fontSize: '13px' }}>
+                                    {pairData.p_value !== null ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)) : '—'}
+                                  </div>
+
+                                  <div className="text-slate-700 pt-2 leading-relaxed" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 600, fontSize: '13px' }}>
+                                    {pairData.n !== null ? pairData.n : '—'}
+                                  </div>
                                 </div>
                               </td>
                             );
-                          }
-
-                          const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
-                          const isDiagonal = rowVar === colVar;
-                          const isStrongCorrelation = pairData.r !== null && Math.abs(pairData.r) > 0.7 && !isDiagonal;
-
-                          return (
-                            <td key={colVar} className="px-6 py-2 text-center border-b border-slate-200">
-                              <div className="py-2">
-                                <div
-                                  className={`pb-2 border-b border-slate-200 ${isDiagonal ? 'text-slate-400' : isStrongCorrelation ? 'text-slate-900' : 'text-slate-900'}`}
-                                  style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: isDiagonal ? 500 : isStrongCorrelation ? 700 : 600, fontSize: '14px' }}
-                                >
-                                  {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
-                                  {significance && <span className="text-teal-600 ml-0.5">{significance}</span>}
-                                </div>
-
-                                <div className="text-slate-700 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 600, fontSize: '13px' }}>
-                                  {pairData.p_value !== null ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)) : '—'}
-                                </div>
-
-                                <div className="text-slate-700 pt-2 leading-relaxed" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 600, fontSize: '13px' }}>
-                                  {pairData.n !== null ? pairData.n : '—'}
-                                </div>
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
+                          })}
+                        </tr>
+                      ));
+                    })()
+                  )}
                 </tbody>
               </table>
             </div>

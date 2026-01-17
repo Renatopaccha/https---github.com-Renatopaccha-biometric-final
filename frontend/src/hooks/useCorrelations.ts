@@ -29,6 +29,7 @@ export interface CorrelationResponse {
 export function useCorrelations() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [correlationData, setCorrelationData] = useState<CorrelationResponse | null>(null);
 
     const calculateCorrelations = async (
         sessionId: string,
@@ -57,10 +58,12 @@ export function useCorrelations() {
             }
 
             const data = await response.json();
+            setCorrelationData(data);
             return data;
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Error calculating correlations';
             setError(errorMessage);
+            setCorrelationData(null); // Reset data on error to prevent inconsistent states
             console.error('Correlation calculation error:', err);
             return null;
         } finally {
@@ -71,6 +74,7 @@ export function useCorrelations() {
     return {
         calculateCorrelations,
         loading,
-        error
+        error,
+        correlationData
     };
 }
