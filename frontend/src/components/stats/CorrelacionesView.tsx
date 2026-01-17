@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ActionToolbar } from './ActionToolbar';
 import { useCorrelations, CorrelationResponse } from '../../hooks/useCorrelations';
 import { useDataContext } from '../../context/DataContext';
-import { useDebounce } from '../../hooks/useDebounce';
+
 
 interface CorrelacionesViewProps {
   onBack: () => void;
@@ -56,58 +56,51 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   const segmentRef = useRef<HTMLDivElement>(null);
 
   // Debounce configuration changes to avoid excessive API calls
-  const configToDebounce = {
-    selectedVars,
-    method,
-    segmentBy
-  };
 
-  const debouncedConfig = useDebounce(configToDebounce, 500);
 
   // Effect to trigger calculation automatically
+  // Effect to trigger calculation automatically with infinite-loop protection
   useEffect(() => {
-    const { selectedVars, method, segmentBy } = debouncedConfig;
-
-    const generate = async () => {
-      // Requirements: Session ID and at least 2 variables
-      if (!sessionId || selectedVars.length < 2) {
-        // If we had data but now invalid config, clear it
-        if (selectedVars.length < 2 && correlationData) {
-          setCorrelationData(null);
-        }
-        return;
+    // 1. Avoid firing if not enough variables
+    if (selectedVars.length < 2) {
+      if (correlationData) {
+        setCorrelationData(null);
       }
+      return;
+    }
 
-      // Explicitly set null to show loading state in table if desired, 
-      // or keep old data while loading (better UX usually, but sticking to requested behavior)
-      // We will set to null to indicate 're-calculating' visibly if that's preferred,
-      // but for smoother UX, usually we keep data until new data arrives.
-      // However, to avoid 'insertBefore' stale data issues, clearing might be safer.
-      setCorrelationData(null);
+    // 2. Avoid firing if already loading
+    if (loading) return;
 
+    // 3. Manual debounce
+    const timer = setTimeout(() => {
       const methods = method === 'comparar_todos'
         ? ['pearson', 'spearman', 'kendall']
         : [method];
 
-      const result = await calculateCorrelations(
-        sessionId,
+      calculateCorrelations(
+        sessionId || '', // Ensure string
         selectedVars,
         methods,
-        segmentBy || null
-      );
-
-      if (result) {
-        setCorrelationData(result);
-        if (method === 'comparar_todos') {
-          setActiveMethodTab('pearson');
+        activeSegmentTab === 'General' ? null : activeSegmentTab
+      ).then((result) => {
+        if (result) {
+          // Only update if method is comparer_todos to force tabs, 
+          // otherwise let the component state handle it.
+          // But we actually setCorrelationData inside the hook, 
+          // so here we might just handle side effects if needed.
+          if (method === 'comparar_todos') {
+            setActiveMethodTab('pearson');
+          }
         }
-      } else {
-        setCorrelationData(null);
-      }
-    };
+      });
+    }, 600);
 
-    generate();
-  }, [debouncedConfig, sessionId]); // Depend on debounced config + session
+    return () => clearTimeout(timer); // Critical cleanup
+
+    // DEPENDENCIES: Use JSON.stringify for deep comparison of selectedVars
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(selectedVars), method, activeSegmentTab, sessionId]);
 
   // Get numeric variables from available columns
   const numericVariables = availableColumns.length > 0 ? availableColumns : [
@@ -209,12 +202,12 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
     const currentMethod = showMethodTabs
       ? activeMethodTab
-      : (method === 'comparar_todos' ? 'pearson' : method) as 'pearson' | 'spearman' | 'kendall';
+      : (method === 'comparar_todos' ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
     const availableSegments = correlationData?.segments || ['General'];
     const currentSegment = showSegmentTabs
       ? (availableSegments.includes(activeSegmentTab) ? activeSegmentTab : availableSegments[0])
       : 'General';
-    const matrixData = correlationData.tables?.[currentSegment]?.[currentMethod]?.matrix;
+    const matrixData = correlationData?.tables?.[currentSegment]?.[currentMethod]?.matrix;
 
     if (!matrixData) {
       return (

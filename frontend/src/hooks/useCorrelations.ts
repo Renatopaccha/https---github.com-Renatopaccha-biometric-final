@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE_URL = `${BASE_URL}/api/v1`;
@@ -31,7 +31,7 @@ export function useCorrelations() {
     const [error, setError] = useState<string | null>(null);
     const [correlationData, setCorrelationData] = useState<CorrelationResponse | null>(null);
 
-    const calculateCorrelations = async (
+    const calculateCorrelations = useCallback(async (
         sessionId: string,
         columns: string[],
         methods: string[],
@@ -69,7 +69,7 @@ export function useCorrelations() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     return {
         calculateCorrelations,
