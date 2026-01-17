@@ -1,5 +1,5 @@
 import { Search, Filter, Trash2, Sparkles, AlertCircle, Loader2, ChevronLeft, ChevronRight, AlertTriangle, Copy } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { CleaningToolbar } from './cleaning/CleaningToolbar';
 import { DataHealthDashboard } from './cleaning/DataHealthDashboard';
 import { EditCellModal } from './cleaning/EditCellModal';
@@ -98,7 +98,14 @@ export function DataTable({ sessionId, onReset }: DataTableProps) {
   };
 
   // --- Logic for Heat Map ---
-  const getCellStatus = (value: any, realRowIndex: number, columnName: string): {
+  // Convert duplicate_rows_indices to Set for O(1) lookup (performance optimization)
+  const duplicateRowsSet = useMemo(
+    () => new Set(healthReport?.duplicate_rows_indices || []),
+    [healthReport?.duplicate_rows_indices]
+  );
+
+  // Memoize getCellStatus to avoid recreating function on every render
+  const getCellStatus = useCallback((value: any, realRowIndex: number, columnName: string): {
     type: 'outlier' | 'null' | 'duplicate' | 'normal';
     colorClass: string;
     icon?: React.ReactNode;
@@ -115,8 +122,8 @@ export function DataTable({ sessionId, onReset }: DataTableProps) {
 
     if (!healthReport) return { type: 'normal', colorClass: '' };
 
-    // 2. Check Duplicates
-    if (healthReport.duplicate_rows_indices.includes(realRowIndex)) {
+    // 2. Check Duplicates (O(1) Set lookup instead of O(n) array.includes)
+    if (duplicateRowsSet.has(realRowIndex)) {
       return {
         type: 'duplicate',
         colorClass: 'bg-amber-50 hover:bg-amber-100/50',
@@ -142,7 +149,7 @@ export function DataTable({ sessionId, onReset }: DataTableProps) {
     }
 
     return { type: 'normal', colorClass: '' };
-  };
+  }, [healthReport, duplicateRowsSet]);
 
   const handleCellClick = (row: DataRow, index: number, mkColumn: string) => {
     // index here is the index within the current page's data array

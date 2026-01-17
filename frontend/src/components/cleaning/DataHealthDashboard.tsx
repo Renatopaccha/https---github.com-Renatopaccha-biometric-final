@@ -1,5 +1,5 @@
 import { Activity, AlertTriangle, Database, Copy, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { DatasetHealthReport } from '../../types/api';
 import { ColumnQualityCard } from './ColumnQualityCard';
 
@@ -9,6 +9,12 @@ interface DataHealthDashboardProps {
 
 export function DataHealthDashboard({ report }: DataHealthDashboardProps) {
     const [isExpanded, setIsExpanded] = useState(true);
+
+    // Memoize column list to avoid recreating array on every render (performance optimization)
+    const columnsList = useMemo(
+        () => Object.values(report.columns),
+        [report.columns]
+    );
 
     // Calculate health score color
     const getHealthColor = (score: number) => {
@@ -120,10 +126,10 @@ export function DataHealthDashboard({ report }: DataHealthDashboardProps) {
                     <div>
                         <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                             <span className="w-1 h-4 bg-teal-600 rounded"></span>
-                            Análisis por Columna ({Object.keys(report.columns).length} columnas)
+                            Análisis por Columna ({columnsList.length} columnas)
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                            {Object.values(report.columns).map((column) => (
+                            {columnsList.map((column) => (
                                 <ColumnQualityCard key={column.column_name} column={column} />
                             ))}
                         </div>

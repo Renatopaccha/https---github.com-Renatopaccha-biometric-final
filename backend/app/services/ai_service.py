@@ -3,6 +3,7 @@ AI Service for Google Gemini integration.
 Handles chat interactions with session-aware context injection and multimodal file processing.
 """
 
+import asyncio
 import base64
 import io
 from typing import List, Optional, Tuple
@@ -119,13 +120,16 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                 f"📊 **Dataset cargado:** {len(df)} filas × {len(df.columns)} columnas\n",
                 f"**Columnas disponibles:**"
             ]
-            
+
+            # Vectorized null count calculation (performance optimization)
+            null_counts = df.isnull().sum()
+            null_pcts = (null_counts / len(df) * 100)
+
             # List columns with data types
             for col in df.columns:
                 dtype = df[col].dtype
-                null_count = df[col].isnull().sum()
-                null_pct = (null_count / len(df) * 100)
-                
+                null_pct = null_pcts[col]
+
                 # Classify data type for user
                 if pd.api.types.is_numeric_dtype(df[col]):
                     type_label = "numérica"
@@ -133,7 +137,7 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                     type_label = "fecha/hora"
                 else:
                     type_label = "categórica/texto"
-                
+
                 context_parts.append(
                     f"  - `{col}` ({type_label}, {dtype}) - {null_pct:.1f}% nulos"
                 )
@@ -286,28 +290,28 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                 status_code=400
             )
     
-    def _process_excel(self, file_content: bytes, filename: str) -> str:
+    def _process_excel_sync(self, file_content: bytes, filename: str) -> str:
         """
-        Read Excel file and convert to markdown table.
-        
+        Synchronous Excel file processing (runs in thread pool).
+
         Args:
             file_content: Excel bytes
             filename: Original filename
-            
+
         Returns:
             Markdown-formatted table (limited to first 50 rows)
         """
         try:
             print(f"[DEBUG] Processing Excel file: {filename}, size: {len(file_content)} bytes")
-            
+
             # Read Excel file
             df = pd.read_excel(io.BytesIO(file_content))
-            
+
             print(f"[DEBUG] Excel loaded: {len(df)} rows, {len(df.columns)} columns")
-            
+
             if df.empty:
                 return f"📊 **Archivo Excel adjunto: {filename}**\n\n⚠️ El archivo está vacío."
-            
+
             # Limit rows for performance
             max_rows = 50
             if len(df) > max_rows:
@@ -316,15 +320,15 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
             else:
                 df_preview = df
                 truncation_note = ""
-            
+
             # Convert to markdown
             markdown = f"📊 **Archivo Excel adjunto: {filename}**\n\n"
             markdown += f"**Dimensiones:** {len(df)} filas × {len(df.columns)} columnas\n\n"
             markdown += df_preview.to_markdown(index=False)
             markdown += truncation_note
-            
+
             return markdown
-            
+
         except PermissionError:
             error_msg = f"❌ No se pudo leer el archivo Excel '{filename}': archivo protegido con contraseña o sin permisos."
             print(f"[ERROR] {error_msg}")
@@ -337,29 +341,49 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
             error_msg = f"❌ Error al procesar el archivo Excel '{filename}': {str(e)}"
             print(f"[ERROR] {error_msg}")
             raise BiometricException(message=error_msg, status_code=400)
-    
-    def _process_csv(self, file_content: bytes, filename: str) -> str:
+
+    async def _process_excel(self, file_content: bytes, filename: str) -> str:
         """
-        Read CSV file and convert to markdown table.
-        
+        Read Excel file and convert to markdown table (async).
+        Runs blocking I/O operations in a thread pool to avoid blocking the event loop.
+
+        Args:
+            file_content: Excel bytes
+            filename: Original filename
+
+        Returns:
+            Markdown-formatted table (limited to first 50 rows)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self._process_excel_sync,
+            file_content,
+            filename
+        )
+    
+    def _process_csv_sync(self, file_content: bytes, filename: str) -> str:
+        """
+        Synchronous CSV file processing (runs in thread pool).
+
         Args:
             file_content: CSV bytes
             filename: Original filename
-            
+
         Returns:
             Markdown-formatted table (limited to first 50 rows)
         """
         try:
             print(f"[DEBUG] Processing CSV file: {filename}, size: {len(file_content)} bytes")
-            
+
             # Read CSV file
             df = pd.read_csv(io.BytesIO(file_content))
-            
+
             print(f"[DEBUG] CSV loaded: {len(df)} rows, {len(df.columns)} columns")
-            
+
             if df.empty:
                 return f"📊 **Archivo CSV adjunto: {filename}**\n\n⚠️ El archivo está vacío."
-            
+
             # Limit rows for performance
             max_rows = 50
             if len(df) > max_rows:
@@ -368,15 +392,15 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
             else:
                 df_preview = df
                 truncation_note = ""
-            
+
             # Convert to markdown
             markdown = f"📊 **Archivo CSV adjunto: {filename}**\n\n"
             markdown += f"**Dimensiones:** {len(df)} filas × {len(df.columns)} columnas\n\n"
             markdown += df_preview.to_markdown(index=False)
             markdown += truncation_note
-            
+
             return markdown
-            
+
         except pd.errors.EmptyDataError:
             error_msg = f"❌ El archivo CSV '{filename}' está vacío."
             print(f"[ERROR] {error_msg}")
@@ -389,15 +413,35 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
             error_msg = f"❌ Error al procesar el archivo CSV '{filename}': {str(e)}"
             print(f"[ERROR] {error_msg}")
             raise BiometricException(message=error_msg, status_code=400)
-    
-    def _process_pdf(self, file_content: bytes, filename: str) -> str:
+
+    async def _process_csv(self, file_content: bytes, filename: str) -> str:
         """
-        Extract text from PDF file.
-        
+        Read CSV file and convert to markdown table (async).
+        Runs blocking I/O operations in a thread pool to avoid blocking the event loop.
+
+        Args:
+            file_content: CSV bytes
+            filename: Original filename
+
+        Returns:
+            Markdown-formatted table (limited to first 50 rows)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self._process_csv_sync,
+            file_content,
+            filename
+        )
+    
+    def _process_pdf_sync(self, file_content: bytes, filename: str) -> str:
+        """
+        Synchronous PDF file processing (runs in thread pool).
+
         Args:
             file_content: PDF bytes
             filename: Original filename
-            
+
         Returns:
             Extracted text with formatting
         """
@@ -406,17 +450,17 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                 message="❌ Procesamiento de PDF no disponible. La librería PyPDF2 no está instalada.",
                 status_code=400
             )
-        
+
         try:
             print(f"[DEBUG] Processing PDF file: {filename}, size: {len(file_content)} bytes")
-            
+
             pdf_reader = PdfReader(io.BytesIO(file_content))
-            
+
             print(f"[DEBUG] PDF loaded: {len(pdf_reader.pages)} pages")
-            
+
             text_parts = [f"📄 **Archivo PDF adjunto: {filename}**\n"]
             text_parts.append(f"**Páginas:** {len(pdf_reader.pages)}\n\n")
-            
+
             # Extract text from all pages (limit to first 10 for performance)
             max_pages = 10
             pages_with_text = 0
@@ -425,19 +469,39 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                 if page_text.strip():
                     text_parts.append(f"**Página {i+1}:**\n{page_text}\n\n")
                     pages_with_text += 1
-            
+
             if pages_with_text == 0:
                 text_parts.append("⚠️ No se pudo extraer texto del PDF. Puede ser un PDF escaneado (imagen) o protegido.")
-            
+
             if len(pdf_reader.pages) > max_pages:
                 text_parts.append(f"\n*(Mostrando primeras {max_pages} páginas de {len(pdf_reader.pages)} totales)*")
-            
+
             return "\n".join(text_parts)
-            
+
         except Exception as e:
             error_msg = f"❌ Error al procesar el archivo PDF '{filename}': {str(e)}"
             print(f"[ERROR] {error_msg}")
             raise BiometricException(message=error_msg, status_code=400)
+
+    async def _process_pdf(self, file_content: bytes, filename: str) -> str:
+        """
+        Extract text from PDF file (async).
+        Runs blocking I/O operations in a thread pool to avoid blocking the event loop.
+
+        Args:
+            file_content: PDF bytes
+            filename: Original filename
+
+        Returns:
+            Extracted text with formatting
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self._process_pdf_sync,
+            file_content,
+            filename
+        )
     
     async def chat(
         self,
@@ -492,17 +556,17 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                         files_processed += 1
                         
                     elif filename.lower().endswith(('.xlsx', '.xls')):
-                        table = self._process_excel(file_content, filename)
+                        table = await self._process_excel(file_content, filename)
                         message += f"\n\n{table}"
                         files_processed += 1
-                    
+
                     elif filename.lower().endswith('.csv'):
-                        table = self._process_csv(file_content, filename)
+                        table = await self._process_csv(file_content, filename)
                         message += f"\n\n{table}"
                         files_processed += 1
-                    
+
                     elif filename.lower().endswith('.pdf'):
-                        text = self._process_pdf(file_content, filename)
+                        text = await self._process_pdf(file_content, filename)
                         message += f"\n\n{text}"
                         files_processed += 1
             
