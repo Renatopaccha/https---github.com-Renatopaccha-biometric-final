@@ -22,6 +22,10 @@ google-generativeai==0.8.3
 python-docx==1.1.2
 Pillow==10.4.0
 
+# Redis Storage Backend (Etapa 2)
+redis==5.0.8
+pyarrow==17.0.0
+
 # TODO: Add when implementing authentication
 # python-jose[cryptography]==3.3.0
 # passlib[bcrypt]==1.7.4

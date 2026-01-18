@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Redis for session storage
+  redis:
+    image: redis:7-alpine
+    container_name: biometric-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - biometric-network
+
+  # Redis Commander (UI for debugging)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: biometric-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - biometric-network
+
+  # FastAPI Backend (optional - for full stack development)
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: biometric-backend
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - REDIS_ENABLED=true
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - SERIALIZATION_METHOD=pyarrow
+  #     - COMPRESSION_ENABLED=true
+  #     - STORAGE_FALLBACK_TO_MEMORY=false
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./backend:/app
+  #   networks:
+  #     - biometric-network
+  #   command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  biometric-network:
+    driver: bridge
