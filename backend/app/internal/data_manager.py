@@ -19,6 +19,7 @@ import json
 import os
 import glob
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -38,7 +39,15 @@ class DataManager:
     
     _instance: Optional["DataManager"] = None
     _lock: threading.Lock = threading.Lock()
-    
+
+    # CODE QUALITY: Named constants for magic numbers
+    TEMP_FILE_EXPIRATION_SECONDS = 3600  # 1 hour
+    MAX_EXCEL_COLUMN_WIDTH = 50
+    EXCEL_COLUMN_SAMPLE_SIZE = 100
+
+    # CODE QUALITY: Compiled regex pattern for efficient audit log parsing
+    _INITIAL_ROWS_PATTERN = re.compile(r'Initial rows:\s*(\d+)')
+
     def __new__(cls) -> "DataManager":
         """Ensure only one instance exists (Singleton pattern)."""
         if cls._instance is None:
@@ -313,11 +322,35 @@ class DataManager:
         """Set intentional missing values for a column."""
         with self._session_lock:
             meta = self._load_metadata(session_id)
-            
+
             if "intentional_missing" not in meta:
                 meta["intentional_missing"] = {}
-            
+
             meta["intentional_missing"][column] = sorted(row_indices)
+            self._save_metadata(session_id, meta)
+
+    def set_intentional_missing_batch(self, session_id: str, columns_data: Dict[str, List[int]]) -> None:
+        """
+        Set intentional missing values for multiple columns at once.
+
+        PERFORMANCE OPTIMIZATION: Batch operation that performs only one file read/write
+        instead of N separate operations for N columns.
+
+        Args:
+            session_id: Session identifier
+            columns_data: Dictionary mapping column names to their row indices
+        """
+        with self._session_lock:
+            meta = self._load_metadata(session_id)
+
+            if "intentional_missing" not in meta:
+                meta["intentional_missing"] = {}
+
+            # Update all columns at once
+            for column, row_indices in columns_data.items():
+                meta["intentional_missing"][column] = sorted(row_indices)
+
+            # Single save operation for all columns
             self._save_metadata(session_id, meta)
     
     # ===== Core Session Methods =====
@@ -450,29 +483,52 @@ class DataManager:
     # ===== Cleanup Methods =====
     
     def cleanup_expired_sessions(self) -> int:
-        """Remove all expired session directories."""
+        """
+        Remove all expired session directories.
+
+        PERFORMANCE OPTIMIZATION: Loads lightweight metadata JSON instead of
+        full DataFrame pickle to check expiration timestamp.
+        """
         print(f"[DEBUG] Running cleanup for expired sessions...")
-        
+
         now = datetime.now()
         removed_count = 0
-        
+
         with self._session_lock:
             # Find all session directories
             for session_dir in self._sessions_dir.iterdir():
                 if not session_dir.is_dir():
                     continue
-                
+
                 session_id = session_dir.name
-                session_data = self._load_session_data(session_id)
-                
-                if session_data is None or now > session_data.get("expires_at", now):
+
+                # Load only metadata (lightweight JSON) instead of full session data
+                meta = self._load_metadata(session_id)
+
+                # Check expiration from metadata
+                should_remove = False
+                if meta is None:
+                    should_remove = True
+                else:
+                    expires_at_str = meta.get("expires_at")
+                    if expires_at_str:
+                        try:
+                            expires_at = datetime.fromisoformat(expires_at_str)
+                            if now > expires_at:
+                                should_remove = True
+                        except:
+                            should_remove = True
+                    else:
+                        should_remove = True
+
+                if should_remove:
                     print(f"[DEBUG] Removing expired session: {session_id}")
                     shutil.rmtree(session_dir)
                     removed_count += 1
-        
+
         if removed_count > 0:
             print(f"[DEBUG] ✓ Cleaned up {removed_count} expired sessions")
-        
+
         return removed_count
     
     # ===== Temporary Storage Methods =====
@@ -525,24 +581,33 @@ class DataManager:
             return False
     
     def cleanup_expired_temp_storage(self) -> int:
-        """Remove all expired temporary storage files."""
+        """
+        Remove all expired temporary storage files.
+
+        PERFORMANCE OPTIMIZATION: Uses file modification time instead of loading
+        entire pickle to check expiration. Assumes temp files expire after 1 hour.
+        """
         now = datetime.now()
         removed_count = 0
-        
+
         with self._session_lock:
             for temp_file in self._temp_dir.glob("*.pkl"):
                 try:
-                    with open(temp_file, 'rb') as f:
-                        temp_data = pickle.load(f)
-                    
-                    if now > temp_data["expires_at"]:
+                    # Check file modification time instead of loading pickle
+                    file_mtime = datetime.fromtimestamp(temp_file.stat().st_mtime)
+                    age_seconds = (now - file_mtime).total_seconds()
+
+                    if age_seconds > self.TEMP_FILE_EXPIRATION_SECONDS:
                         temp_file.unlink()
                         removed_count += 1
-                except:
-                    # Corrupted file
-                    temp_file.unlink()
-                    removed_count += 1
-        
+                except Exception:
+                    # If file access fails or is corrupted, remove it
+                    try:
+                        temp_file.unlink()
+                        removed_count += 1
+                    except:
+                        pass
+
         return removed_count
     
     def add_audit_entry(self, session_id: str, entry: str) -> None:
@@ -594,27 +659,28 @@ class DataManager:
     def get_initial_row_count(self, session_id: str) -> Optional[int]:
         """
         Extract initial row count from the first audit log entry.
-        
+
+        CODE QUALITY: Uses compiled regex pattern for efficient parsing.
+
         Args:
             session_id: Session identifier
-            
+
         Returns:
             Initial row count if available, None otherwise
         """
         audit_log = self.get_audit_log(session_id)
         if not audit_log:
             return None
-        
-        # Parse first entry: "Session created. Original file: '...'. Initial rows: N"
+
+        # Parse first entry using compiled regex pattern
         first_entry = audit_log[0]
         try:
-            if "Initial rows:" in first_entry:
-                parts = first_entry.split("Initial rows:")
-                if len(parts) > 1:
-                    return int(parts[1].strip())
-        except:
+            match = self._INITIAL_ROWS_PATTERN.search(first_entry)
+            if match:
+                return int(match.group(1))
+        except (ValueError, AttributeError):
             pass
-        
+
         return None
 
 

@@ -20,6 +20,7 @@ import pandas as pd
 from scipy import stats
 from scipy.stats import chi2_contingency, fisher_exact
 from typing import Dict, Union, Optional, List, Tuple, Any
+from itertools import combinations
 
 def calculate_descriptive_stats(data: Union[pd.Series, np.ndarray, List], 
                                percentiles: Optional[List[float]] = None) -> Dict[str, float]:
@@ -1672,47 +1673,50 @@ def calculate_correlations(
             # Pre-calcular máscaras de valores válidos para cada variable (optimización)
             valid_masks = {col: segment_df[col].notna() for col in columns}
 
+            # PERFORMANCE OPTIMIZATION: Fill diagonal first (self-correlation)
             for i, var1 in enumerate(columns):
-                for j, var2 in enumerate(columns):
-                    # Diagonal: self-correlation
-                    if i == j:
-                        p_value_matrix[i][j] = 0.0
-                        sample_size_matrix[i][j] = int(segment_df[var1].count())
-                        continue
+                p_value_matrix[i][i] = 0.0
+                sample_size_matrix[i][i] = int(segment_df[var1].count())
 
-                    # Triángulo inferior: copiar del superior (simetría)
-                    if i > j:
-                        p_value_matrix[i][j] = p_value_matrix[j][i]
-                        sample_size_matrix[i][j] = sample_size_matrix[j][i]
-                        continue
+            # PERFORMANCE OPTIMIZATION: Use itertools.combinations to avoid
+            # nested loops with continue statements. This is more efficient.
+            for i, j in combinations(range(len(columns)), 2):
+                var1, var2 = columns[i], columns[j]
 
-                    # Triángulo superior: calcular p-values
-                    # Usar máscaras pre-calculadas para optimizar dropna()
-                    both_valid = valid_masks[var1] & valid_masks[var2]
-                    n = both_valid.sum()
-                    sample_size_matrix[i][j] = int(n)
+                # Usar máscaras pre-calculadas para optimizar dropna()
+                both_valid = valid_masks[var1] & valid_masks[var2]
+                n = both_valid.sum()
 
-                    if n < 3:
-                        p_value_matrix[i][j] = None
-                        # También corregimos R a None si pandas lo calculó con < 3
-                        correlation_matrix[i][j] = None
-                        continue
+                # Set sample size for both triangles (symmetric)
+                sample_size_matrix[i][j] = int(n)
+                sample_size_matrix[j][i] = int(n)
 
-                    try:
-                        # Extraer datos válidos usando la máscara (más rápido que dropna())
-                        var1_data = segment_df.loc[both_valid, var1]
-                        var2_data = segment_df.loc[both_valid, var2]
+                if n < 3:
+                    p_value_matrix[i][j] = None
+                    p_value_matrix[j][i] = None
+                    # También corregimos R a None si pandas lo calculó con < 3
+                    correlation_matrix[i][j] = None
+                    correlation_matrix[j][i] = None
+                    continue
 
-                        if method == 'pearson':
-                            stat, p = pearsonr(var1_data, var2_data)
-                        elif method == 'spearman':
-                            stat, p = spearmanr(var1_data, var2_data)
-                        elif method == 'kendall':
-                            stat, p = kendalltau(var1_data, var2_data)
+                try:
+                    # Extraer datos válidos usando la máscara (más rápido que dropna())
+                    var1_data = segment_df.loc[both_valid, var1]
+                    var2_data = segment_df.loc[both_valid, var2]
 
-                        p_value_matrix[i][j] = float(p)
-                    except:
-                        p_value_matrix[i][j] = None
+                    if method == 'pearson':
+                        stat, p = pearsonr(var1_data, var2_data)
+                    elif method == 'spearman':
+                        stat, p = spearmanr(var1_data, var2_data)
+                    elif method == 'kendall':
+                        stat, p = kendalltau(var1_data, var2_data)
+
+                    # Set p-value for both triangles (symmetric)
+                    p_value_matrix[i][j] = float(p)
+                    p_value_matrix[j][i] = float(p)
+                except:
+                    p_value_matrix[i][j] = None
+                    p_value_matrix[j][i] = None
 
             # Guardar resultados del segmento
             results[method][segment_name] = {
