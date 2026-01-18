@@ -28,6 +28,24 @@ const getCorrelationColor = (r: number | null): string => {
   }
 };
 
+const getCorrelationClassification = (r: number | null): { label: string; tone: 'positive' | 'negative' | 'neutral' } => {
+  if (r === null) {
+    return { label: 'Neutra', tone: 'neutral' };
+  }
+
+  const absR = Math.abs(r);
+
+  if (absR < 0.3) {
+    return { label: 'Neutra', tone: 'neutral' };
+  }
+
+  if (absR < 0.7) {
+    return { label: 'Moderada', tone: r >= 0 ? 'positive' : 'negative' };
+  }
+
+  return { label: r >= 0 ? 'Fuerte Positiva' : 'Fuerte Negativa', tone: r >= 0 ? 'positive' : 'negative' };
+};
+
 type CorrelationMethod = 'comparar_todos' | 'pearson' | 'spearman' | 'kendall';
 
 // FilterRule interface is now imported from the hook
@@ -254,17 +272,21 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
           const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
           const isDiagonal = rowVar === colVar;
-          const isStrongCorrelation = pairData.r !== null && Math.abs(pairData.r) > 0.7 && !isDiagonal;
+          const correlationClassification = getCorrelationClassification(pairData.r);
+          const isStrongCorrelation = !isDiagonal && correlationClassification.label.startsWith('Fuerte');
+          const shouldUseContrastText = !isDiagonal && correlationClassification.label.startsWith('Fuerte');
+          const correlationTooltip = `Correlación: ${pairData.r !== null ? pairData.r.toFixed(2) : '—'} (${correlationClassification.label}) entre ${rowVar} y ${colVar}`;
 
           // Calculate heatmap background color
           const bgColor = getCorrelationColor(pairData.r);
-          const textColor = pairData.r !== null && Math.abs(pairData.r) > 0.6 ? 'white' : 'inherit';
+          const textColor = shouldUseContrastText ? 'white' : 'inherit';
 
           return (
             <td
               key={colVar}
               className="px-6 py-2 text-center border-b border-slate-200 transition-colors"
               style={{ backgroundColor: bgColor }}
+              title={correlationTooltip}
             >
               <div className="py-2">
                 <div
@@ -277,7 +299,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                   }}
                 >
                   {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
-                  {significance && <span className="ml-0.5" style={{ color: pairData.r !== null && Math.abs(pairData.r) > 0.6 ? '#fef08a' : '#0d9488' }}>{significance}</span>}
+                  {significance && <span className="ml-0.5" style={{ color: shouldUseContrastText ? '#fef08a' : '#0d9488' }}>{significance}</span>}
                 </div>
 
                 <div
