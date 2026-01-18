@@ -572,12 +572,19 @@ async def apply_missing_actions(request: MissingApplyRequest) -> MissingApplyRes
             detail=e.message if hasattr(e, 'message') else str(e)
         )
     
+    # PERFORMANCE OPTIMIZATION: Batch collect all intentional missing data
+    # to avoid N+1 file I/O operations (one save per column)
+    intentional_missing_batch = {}
     for action in request.actions:
         if action.type == "mark_intentional":
             for col in action.columns:
                 if col in df_result.columns:
                     na_indices = df_result[df_result[col].isna()].index.tolist()
-                    data_manager.set_intentional_missing(request.session_id, col, na_indices)
+                    intentional_missing_batch[col] = na_indices
+
+    # Save all intentional missing data in one operation
+    if intentional_missing_batch:
+        data_manager.set_intentional_missing_batch(request.session_id, intentional_missing_batch)
     
     data_manager.update_dataframe(request.session_id, df_result)
     

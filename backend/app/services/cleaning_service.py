@@ -929,31 +929,35 @@ class CleaningService:
     def _calculate_affected_variables(df_before: pd.DataFrame, df_after: pd.DataFrame) -> int:
         """
         Calculate number of columns that lost non-NA values in removed rows.
-        
+
+        PERFORMANCE OPTIMIZATION: Uses vectorized operations instead of loop
+        with repeated set-to-list conversions.
+
         Args:
             df_before: Original DataFrame
             df_after: DataFrame after actions
-            
+
         Returns:
             Count of affected columns
         """
         if len(df_before) == len(df_after):
             return 0
-        
-        # Find removed indices
-        removed_indices = set(df_before.index) - set(df_after.index)
-        
-        if not removed_indices:
+
+        # Find removed indices using boolean mask (more efficient)
+        removed_mask = ~df_before.index.isin(df_after.index)
+
+        if not removed_mask.any():
             return 0
-        
-        # Count columns with non-NA values in removed rows
-        affected = 0
-        for col in df_before.columns:
-            non_na_in_removed = df_before.loc[list(removed_indices), col].notna().sum()
-            if non_na_in_removed > 0:
-                affected += 1
-        
-        return affected
+
+        # Vectorized operation: Count columns with non-NA values in removed rows
+        # Extract only removed rows and check for non-NA values per column
+        removed_rows = df_before.loc[removed_mask]
+
+        # Count how many columns have at least one non-NA value
+        # notna().any() returns True if column has at least one non-NA value
+        affected = removed_rows.notna().any().sum()
+
+        return int(affected)
 
     @staticmethod
     def detect_empty_rows(df: pd.DataFrame) -> Dict:

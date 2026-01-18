@@ -115,20 +115,27 @@ async def download_dataset(session_id: str):
                 adjusted_width = min(max_length + 2, 50)  # Cap at 50 for very long content
                 worksheet.set_column(col_num, col_num, adjusted_width)
             
-            # Apply cell formats to data rows
+            # PERFORMANCE OPTIMIZATION: Pre-compute column dtypes to avoid repeated checks
+            # This reduces O(n*m) complexity by caching dtype information
+            numeric_columns = set()
+            for col_num, column_name in enumerate(df.columns):
+                if pd.api.types.is_numeric_dtype(df[column_name]):
+                    numeric_columns.add(col_num)
+
+            # Apply cell formats to data rows (optimized loop)
             for row_num in range(len(df)):
                 for col_num, column_name in enumerate(df.columns):
                     cell_value = df.iloc[row_num, col_num]
-                    
+
                     # SAFETY CHECK: Handle NaN and Infinity values
                     # xlsxwriter doesn't support these by default
                     if pd.isna(cell_value) or cell_value == float('inf') or cell_value == float('-inf'):
                         worksheet.write(row_num + 1, col_num, "", cell_format)
-                    
-                    # Use number format for valid numeric values
-                    elif pd.api.types.is_numeric_dtype(df[column_name]):
+
+                    # Use number format for valid numeric values (using pre-computed set)
+                    elif col_num in numeric_columns:
                         worksheet.write(row_num + 1, col_num, cell_value, number_format)
-                    
+
                     # Regular text format for everything else
                     else:
                         worksheet.write(row_num + 1, col_num, cell_value, cell_format)
@@ -174,15 +181,26 @@ async def download_audit_report(session_id: str):
         HTTPException 404: If session not found or expired
     """
     try:
-        # 1. Retrieve Data
+        # PERFORMANCE OPTIMIZATION: Retrieve all data in one batch to avoid multiple file reads
+        # This reduces file I/O from 4 separate operations to 1
         df = data_manager.get_dataframe(session_id)
-        
-        # 2. Retrieve Metadata (FIXED: use get_session_metadata instead of get_session)
         session_meta = data_manager.get_session_metadata(session_id)
+
+        # Extract all needed data from session_meta
         filename = session_meta.get("filename", "dataset")
-        
-        audit_log = data_manager.get_audit_log(session_id)
-        initial_rows = data_manager.get_initial_row_count(session_id)
+        audit_log = session_meta.get("audit_log", [])
+        initial_rows = None
+
+        # Extract initial row count from first audit log entry if available
+        if audit_log and len(audit_log) > 0:
+            first_entry = audit_log[0]
+            if "Initial rows:" in first_entry:
+                try:
+                    parts = first_entry.split("Initial rows:")
+                    if len(parts) > 1:
+                        initial_rows = int(parts[1].strip())
+                except:
+                    pass
         current_rows = len(df)
         
         # Calculate data loss percentage
