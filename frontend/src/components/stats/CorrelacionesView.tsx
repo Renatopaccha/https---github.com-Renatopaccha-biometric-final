@@ -802,6 +802,17 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
               </div>
             )}
 
+            <div className="px-8 py-4 border-t border-slate-200 bg-white">
+              <div className="space-y-3">
+                <div className="h-3 rounded-full bg-gradient-to-r from-rose-500 via-slate-100 to-indigo-500" />
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-slate-600" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  <span>Correlación Negativa (-1)</span>
+                  <span>Sin Relación (0)</span>
+                  <span>Correlación Positiva (+1)</span>
+                </div>
+              </div>
+            </div>
+
             <div className="px-8 py-5 bg-gradient-to-b from-slate-50 to-slate-100 border-t-2 border-slate-300">
               <div className="flex items-start gap-6">
                 <div className="flex-1">
