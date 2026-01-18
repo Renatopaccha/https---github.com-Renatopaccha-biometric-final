@@ -17,6 +17,7 @@ interface CorrelationMatrixResult {
 }
 
 export interface FilterRule {
+    id: string;
     column: string;
     operator: '=' | '≠' | '>' | '<' | '≥' | '≤';
     value: number;
