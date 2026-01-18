@@ -18,7 +18,15 @@ import pandas as pd
 
 from app.core.config import settings
 from app.core.errors import SessionNotFoundException
-from app.internal.storage import StorageBackend, InMemoryBackend
+from app.internal.storage import (
+    StorageBackend,
+    InMemoryBackend,
+    RedisBackend,
+    REDIS_BACKEND_AVAILABLE
+)
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DataManager:
@@ -45,14 +53,60 @@ class DataManager:
         return cls._instance
 
     def _initialize_backend(self) -> None:
-        """Initialize storage backend (InMemoryBackend for now, Redis in future)."""
-        print(f"[DEBUG] DataManager initializing...")
+        """
+        Initialize storage backend based on configuration.
 
-        # For now, always use InMemoryBackend
-        # In future (Etapa 3), we'll check settings.redis_enabled here
-        self.backend: StorageBackend = InMemoryBackend()
+        Selection logic:
+        1. If redis_enabled=True and Redis available → Use RedisBackend
+        2. If Redis fails and fallback_to_memory=True → Use InMemoryBackend
+        3. Otherwise → Use InMemoryBackend
+        """
+        logger.info("[DataManager] Initializing storage backend...")
 
-        print(f"[DEBUG] ✓ DataManager initialized with {self.backend.__class__.__name__}")
+        # Check if Redis is enabled in settings
+        if settings.redis_enabled:
+            logger.info("[DataManager] Redis enabled in settings, attempting to use RedisBackend")
+
+            # Check if Redis backend is available
+            if not REDIS_BACKEND_AVAILABLE:
+                logger.error("[DataManager] Redis backend not available (dependencies missing)")
+
+                if settings.storage_fallback_to_memory:
+                    logger.warning("[DataManager] Falling back to InMemoryBackend")
+                    self.backend: StorageBackend = InMemoryBackend()
+                    logger.info(f"[DataManager] ✓ Initialized with {self.backend.__class__.__name__} (fallback)")
+                else:
+                    raise RuntimeError(
+                        "Redis backend not available and fallback disabled. "
+                        "Install dependencies: pip install redis pyarrow"
+                    )
+            else:
+                # Try to initialize RedisBackend
+                try:
+                    self.backend: StorageBackend = RedisBackend()
+                    logger.info(f"[DataManager] ✓ Initialized with {self.backend.__class__.__name__}")
+
+                    # Test connection
+                    health = self.backend.health_check()
+                    if not health.get("reachable", False):
+                        raise RuntimeError("Redis is not reachable")
+
+                    logger.info(f"[DataManager] ✓ Redis health check passed (latency: {health.get('latency_ms', 'N/A')}ms)")
+
+                except Exception as e:
+                    logger.error(f"[DataManager] Failed to initialize RedisBackend: {e}")
+
+                    if settings.storage_fallback_to_memory:
+                        logger.warning("[DataManager] Falling back to InMemoryBackend")
+                        self.backend: StorageBackend = InMemoryBackend()
+                        logger.info(f"[DataManager] ✓ Initialized with {self.backend.__class__.__name__} (fallback)")
+                    else:
+                        raise RuntimeError(f"Redis backend initialization failed: {e}")
+        else:
+            # Redis disabled, use InMemoryBackend
+            logger.info("[DataManager] Redis disabled in settings, using InMemoryBackend")
+            self.backend: StorageBackend = InMemoryBackend()
+            logger.info(f"[DataManager] ✓ Initialized with {self.backend.__class__.__name__}")
 
     # ===== Core Session Methods (delegate to backend) =====
 
@@ -154,6 +208,41 @@ class DataManager:
     def get_active_sessions_count(self) -> int:
         """Get count of active (non-expired) sessions."""
         return self.backend.get_active_sessions_count()
+
+    # ===== Backend Info Methods =====
+
+    def get_backend_type(self) -> str:
+        """
+        Get the type of storage backend currently in use.
+
+        Returns:
+            str: Backend type ("inmemory" or "redis")
+        """
+        backend_class = self.backend.__class__.__name__
+        if backend_class == "RedisBackend":
+            return "redis"
+        elif backend_class == "InMemoryBackend":
+            return "inmemory"
+        else:
+            return "unknown"
+
+    def get_backend_health(self) -> Dict:
+        """
+        Get health status of the storage backend.
+
+        Returns:
+            Dict: Health information including backend_type, reachable, latency, etc.
+        """
+        return self.backend.health_check()
+
+    def is_redis_enabled(self) -> bool:
+        """
+        Check if Redis backend is currently active.
+
+        Returns:
+            bool: True if using RedisBackend, False otherwise
+        """
+        return self.get_backend_type() == "redis"
 
 
 # Global singleton instance
