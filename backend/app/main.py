@@ -25,19 +25,40 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     # Startup
+    print("=" * 70)
     print("🚀 Biometric API starting up...")
     print(f"📊 Session timeout: {settings.session_timeout_minutes} minutes")
-    
+
+    # Display storage backend information
+    backend_type = data_manager.get_backend_type()
+    backend_class = data_manager.backend.__class__.__name__
+    print(f"💾 Storage backend: {backend_class} ({backend_type})")
+
+    # Show Redis status if enabled
+    if settings.redis_enabled:
+        if data_manager.is_redis_enabled():
+            health = data_manager.get_backend_health()
+            latency = health.get("latency_ms", "N/A")
+            print(f"✅ Redis: Connected (latency: {latency}ms)")
+        else:
+            print(f"⚠️  Redis: Enabled but not available (using fallback)")
+    else:
+        print(f"ℹ️  Redis: Disabled (using InMemory backend)")
+
+    print("=" * 70)
+
     # TODO: Initialize database connection when implementing persistence
     # await database.connect()
-    
+
     yield
-    
+
     # Shutdown
+    print("=" * 70)
     print("🛑 Biometric API shutting down...")
     cleanup_count = data_manager.cleanup_expired_sessions()
     print(f"🧹 Cleaned up {cleanup_count} expired session(s)")
-    
+    print("=" * 70)
+
     # TODO: Close database connection
     # await database.disconnect()
 
@@ -93,3 +114,58 @@ async def health_check():
         "status": "healthy",
         "active_sessions": data_manager.get_active_sessions_count()
     }
+
+
+@app.get("/health/storage", tags=["Root"])
+async def storage_health_check():
+    """
+    Storage backend health check endpoint.
+
+    Returns detailed information about the storage backend including:
+    - Backend type (inmemory or redis)
+    - Reachability status
+    - Latency metrics
+    - Redis-specific info (if using Redis)
+    - Active sessions count
+    """
+    try:
+        backend_type = data_manager.get_backend_type()
+        health_info = data_manager.get_backend_health()
+
+        # Determine overall status
+        if health_info.get("reachable", False):
+            status = "healthy"
+        else:
+            status = "unhealthy"
+
+        response = {
+            "status": status,
+            "backend_type": backend_type,
+            "backend_class": data_manager.backend.__class__.__name__,
+            "reachable": health_info.get("reachable", False),
+            "latency_ms": health_info.get("latency_ms"),
+            "active_sessions": data_manager.get_active_sessions_count(),
+            "redis_enabled": settings.redis_enabled,
+            "redis_available": data_manager.is_redis_enabled(),
+        }
+
+        # Add Redis-specific info if available
+        if "redis_info" in health_info:
+            response["redis_info"] = health_info["redis_info"]
+
+        # Add storage directories for InMemory backend
+        if "storage_dirs" in health_info:
+            response["storage_dirs"] = health_info["storage_dirs"]
+
+        # Add error if backend is unreachable
+        if "error" in health_info:
+            response["error"] = health_info["error"]
+
+        return response
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "backend_type": "unknown",
+            "error": str(e)
+        }
