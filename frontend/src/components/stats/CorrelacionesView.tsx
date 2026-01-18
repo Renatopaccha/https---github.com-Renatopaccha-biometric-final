@@ -33,6 +33,24 @@ const getCellStyles = (value: number | null, isDiagonal: boolean): string => {
   return 'bg-indigo-500/90 text-white';
 };
 
+const getCorrelationClassification = (r: number | null): { label: string; tone: 'positive' | 'negative' | 'neutral' } => {
+  if (r === null) {
+    return { label: 'Neutra', tone: 'neutral' };
+  }
+
+  const absR = Math.abs(r);
+
+  if (absR < 0.3) {
+    return { label: 'Neutra', tone: 'neutral' };
+  }
+
+  if (absR < 0.7) {
+    return { label: 'Moderada', tone: r >= 0 ? 'positive' : 'negative' };
+  }
+
+  return { label: r >= 0 ? 'Fuerte Positiva' : 'Fuerte Negativa', tone: r >= 0 ? 'positive' : 'negative' };
+};
+
 type CorrelationMethod = 'comparar_todos' | 'pearson' | 'spearman' | 'kendall';
 
 // FilterRule interface is now imported from the hook
@@ -267,6 +285,14 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
           const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
           const isDiagonal = rowVar === colVar;
+          const correlationClassification = getCorrelationClassification(pairData.r);
+          const isStrongCorrelation = !isDiagonal && correlationClassification.label.startsWith('Fuerte');
+          const shouldUseContrastText = !isDiagonal && correlationClassification.label.startsWith('Fuerte');
+          const correlationTooltip = `Correlación: ${pairData.r !== null ? pairData.r.toFixed(2) : '—'} (${correlationClassification.label}) entre ${rowVar} y ${colVar}`;
+
+          // Calculate heatmap background color
+          const bgColor = getCorrelationColor(pairData.r);
+          const textColor = shouldUseContrastText ? 'white' : 'inherit';
           const isStrongCorrelation = pairData.r !== null && Math.abs(pairData.r) > 0.7 && !isDiagonal;
           const cellStyles = getCellStyles(pairData.r, isDiagonal);
           const isStrongText = pairData.r !== null && Math.abs(pairData.r) > 0.6 && !isDiagonal;
@@ -274,6 +300,9 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
           return (
             <td
               key={colVar}
+              className="px-6 py-2 text-center border-b border-slate-200 transition-colors"
+              style={{ backgroundColor: bgColor }}
+              title={correlationTooltip}
               className="px-2 py-2 text-center align-top"
             >
               <div className={`py-2 rounded-md shadow-sm transition-transform hover:scale-105 ${cellStyles}`}>
@@ -285,6 +314,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                   }}
                 >
                   {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
+                  {significance && <span className="ml-0.5" style={{ color: shouldUseContrastText ? '#fef08a' : '#0d9488' }}>{significance}</span>}
                   {significance && (
                     <span className={`ml-0.5 ${isStrongText ? 'text-amber-200' : 'text-teal-700'}`}>
                       {significance}
