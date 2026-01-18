@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import { ChatMessageBubble } from './ChatMessageBubble';
 import { Loader2 } from 'lucide-react';
 
@@ -14,7 +14,10 @@ interface MessageListProps {
   isLoading?: boolean;
 }
 
-export function MessageList({ messages, isLoading = false }: MessageListProps) {
+// PERFORMANCE OPTIMIZATION: Define font style constant
+const FONT_STYLE = { fontFamily: 'Inter, system-ui, sans-serif' };
+
+function MessageListComponent({ messages, isLoading = false }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -34,21 +37,21 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
           </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <h3 className="text-lg font-bold text-slate-900 mb-2" style={FONT_STYLE}>
             Asistente AI de Análisis
           </h3>
-          <p className="text-sm text-slate-600 leading-relaxed mb-4" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-            Haz preguntas sobre tus datos biomédicos, sube archivos CSV o imágenes de gráficos para análisis, 
+          <p className="text-sm text-slate-600 leading-relaxed mb-4" style={FONT_STYLE}>
+            Haz preguntas sobre tus datos biomédicos, sube archivos CSV o imágenes de gráficos para análisis,
             o solicita ayuda con interpretación estadística.
           </p>
           <div className="flex flex-wrap gap-2 justify-center">
-            <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+            <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium" style={FONT_STYLE}>
               Análisis estadístico
             </span>
-            <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+            <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium" style={FONT_STYLE}>
               Interpretación de resultados
             </span>
-            <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+            <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium" style={FONT_STYLE}>
               Sugerencias de pruebas
             </span>
           </div>
@@ -75,7 +78,7 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
                   <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                   <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                   <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  <span className="text-xs text-slate-600 ml-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  <span className="text-xs text-slate-600 ml-2" style={FONT_STYLE}>
                     Pensando...
                   </span>
                 </div>
@@ -89,3 +92,6 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
     </div>
   );
 }
+
+// PERFORMANCE OPTIMIZATION: Wrap with React.memo to prevent unnecessary re-renders
+export const MessageList = memo(MessageListComponent);

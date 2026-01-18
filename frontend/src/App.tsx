@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { Home } from './components/Home';
-import { DataPreprocessing } from './components/DataPreprocessing';
-import { DescriptiveStats } from './components/DescriptiveStats';
-import { AIAssistant } from './components/AIAssistant';
+
+// PERFORMANCE OPTIMIZATION: Code splitting with React.lazy
+// This reduces initial bundle size by loading components only when needed
+const DataPreprocessing = lazy(() => import('./components/DataPreprocessing').then(m => ({ default: m.DataPreprocessing })));
+const DescriptiveStats = lazy(() => import('./components/DescriptiveStats').then(m => ({ default: m.DescriptiveStats })));
+const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ default: m.AIAssistant })));
 
 export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -36,9 +39,15 @@ export default function App() {
 
         <main className="flex-1 overflow-auto bg-gray-50">
           {currentView === 'inicio' && <Home />}
-          {currentView === 'preprocesamiento' && <DataPreprocessing />}
-          {currentView === 'estadistica' && <DescriptiveStats onNavigate={handleNavigation} />}
-          {currentView === 'asistente' && <AIAssistant initialChatId={selectedChatId} />}
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-full">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+            </div>
+          }>
+            {currentView === 'preprocesamiento' && <DataPreprocessing />}
+            {currentView === 'estadistica' && <DescriptiveStats onNavigate={handleNavigation} />}
+            {currentView === 'asistente' && <AIAssistant initialChatId={selectedChatId} />}
+          </Suspense>
         </main>
       </div>
     </div>

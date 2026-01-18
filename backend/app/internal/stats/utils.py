@@ -262,10 +262,12 @@ def _excel_paper_descriptiva(df_plano, orientacion="Horizontal (como SPSS)", she
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
 
-    # autosize columnas (simple)
+    # PERFORMANCE OPTIMIZATION: Sample-based column width calculation
+    # instead of iterating all rows (O(n*m) → O(sample_size*m))
+    sample_size = min(100, ws.max_row)  # Sample first 100 rows only
     for col_idx in range(1, ws.max_column + 1):
         max_len = 0
-        for row_idx in range(1, ws.max_row + 1):
+        for row_idx in range(1, sample_size + 1):
             val = ws.cell(row=row_idx, column=col_idx).value
             if val is None:
                 continue
