@@ -62,14 +62,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 `${API_BASE_URL}/data?session_id=${sessionId}&skip=${skip}&limit=${limit}`
             );
 
-            // AUTO-RECUPERACIÓN: Si la sesión no existe (404), reiniciar app
-            if (response.status === 404) {
-                console.warn("Sesión expirada o no encontrada (404). Reiniciando...");
-                setSessionId(null);
-                return;
-            }
-
-            // AUTO-RECUPERACIÓN: Si la sesión no existe (404), reiniciar app
+            // CODE QUALITY: Auto-recovery for expired sessions
             if (response.status === 404) {
                 console.warn("Sesión expirada o no encontrada (404). Reiniciando...");
                 setSessionId(null);

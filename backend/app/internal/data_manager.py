@@ -19,6 +19,7 @@ import json
 import os
 import glob
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -38,7 +39,15 @@ class DataManager:
     
     _instance: Optional["DataManager"] = None
     _lock: threading.Lock = threading.Lock()
-    
+
+    # CODE QUALITY: Named constants for magic numbers
+    TEMP_FILE_EXPIRATION_SECONDS = 3600  # 1 hour
+    MAX_EXCEL_COLUMN_WIDTH = 50
+    EXCEL_COLUMN_SAMPLE_SIZE = 100
+
+    # CODE QUALITY: Compiled regex pattern for efficient audit log parsing
+    _INITIAL_ROWS_PATTERN = re.compile(r'Initial rows:\s*(\d+)')
+
     def __new__(cls) -> "DataManager":
         """Ensure only one instance exists (Singleton pattern)."""
         if cls._instance is None:
@@ -585,11 +594,10 @@ class DataManager:
             for temp_file in self._temp_dir.glob("*.pkl"):
                 try:
                     # Check file modification time instead of loading pickle
-                    # Temp files expire after 1 hour (3600 seconds)
                     file_mtime = datetime.fromtimestamp(temp_file.stat().st_mtime)
                     age_seconds = (now - file_mtime).total_seconds()
 
-                    if age_seconds > 3600:  # 1 hour expiration
+                    if age_seconds > self.TEMP_FILE_EXPIRATION_SECONDS:
                         temp_file.unlink()
                         removed_count += 1
                 except Exception:
@@ -651,27 +659,28 @@ class DataManager:
     def get_initial_row_count(self, session_id: str) -> Optional[int]:
         """
         Extract initial row count from the first audit log entry.
-        
+
+        CODE QUALITY: Uses compiled regex pattern for efficient parsing.
+
         Args:
             session_id: Session identifier
-            
+
         Returns:
             Initial row count if available, None otherwise
         """
         audit_log = self.get_audit_log(session_id)
         if not audit_log:
             return None
-        
-        # Parse first entry: "Session created. Original file: '...'. Initial rows: N"
+
+        # Parse first entry using compiled regex pattern
         first_entry = audit_log[0]
         try:
-            if "Initial rows:" in first_entry:
-                parts = first_entry.split("Initial rows:")
-                if len(parts) > 1:
-                    return int(parts[1].strip())
-        except:
+            match = self._INITIAL_ROWS_PATTERN.search(first_entry)
+            if match:
+                return int(match.group(1))
+        except (ValueError, AttributeError):
             pass
-        
+
         return None
 
 

@@ -98,21 +98,25 @@ async def download_dataset(session_id: str):
             for col_num, column_name in enumerate(df.columns):
                 worksheet.write(0, col_num, column_name, header_format)
             
+            # CODE QUALITY: Using named constants for magic numbers
+            COLUMN_WIDTH_SAMPLE_SIZE = 100
+            MAX_COLUMN_WIDTH = 50
+
             # Auto-adjust column widths based on content
             for col_num, column_name in enumerate(df.columns):
                 # Calculate max length in column
                 max_length = len(str(column_name))  # Start with header length
-                
-                # Check up to first 100 rows for performance
-                sample_size = min(100, len(df))
+
+                # Check up to first N rows for performance
+                sample_size = min(COLUMN_WIDTH_SAMPLE_SIZE, len(df))
                 if sample_size > 0:
                     column_values = df[column_name].head(sample_size).astype(str)
                     max_value_length = column_values.str.len().max()
                     max_length = max(max_length, max_value_length)
-                
+
                 # Set column width (add some padding)
                 # Excel column width units are approximate character widths
-                adjusted_width = min(max_length + 2, 50)  # Cap at 50 for very long content
+                adjusted_width = min(max_length + 2, MAX_COLUMN_WIDTH)
                 worksheet.set_column(col_num, col_num, adjusted_width)
             
             # PERFORMANCE OPTIMIZATION: Pre-compute column dtypes to avoid repeated checks
