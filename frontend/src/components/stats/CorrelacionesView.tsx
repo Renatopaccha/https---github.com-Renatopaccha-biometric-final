@@ -9,6 +9,40 @@ interface CorrelacionesViewProps {
   onBack: () => void;
 }
 
+// Academic-style cell background - softer, educational look
+const getCellBackground = (value: number | null, isDiagonal: boolean): string => {
+  if (isDiagonal) {
+    return 'bg-blue-50/80'; // Soft blue highlight for diagonal
+  }
+  if (value === null) {
+    return 'bg-white';
+  }
+  const absVal = Math.abs(value);
+  if (absVal >= 0.7) {
+    return 'bg-blue-50/60'; // Slight highlight for strong correlations
+  }
+  return 'bg-white';
+};
+
+// Get coefficient text color based on strength
+const getCoefColor = (value: number | null, isDiagonal: boolean): string => {
+  if (isDiagonal) {
+    return 'text-blue-600'; // Blue for diagonal
+  }
+  if (value === null) {
+    return 'text-slate-400';
+  }
+  const absVal = Math.abs(value);
+  if (absVal >= 0.7) {
+    return 'text-blue-600 font-bold'; // Strong = bold blue
+  }
+  if (absVal >= 0.3) {
+    return 'text-slate-800'; // Moderate = dark text
+  }
+  return 'text-slate-500'; // Weak = lighter text
+};
+
+// Legacy function kept for compatibility
 const getCellStyles = (value: number | null, isDiagonal: boolean): string => {
   if (isDiagonal || value === null) {
     return 'bg-slate-50 text-slate-400';
@@ -222,6 +256,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
   // Helper function to render table rows - eliminates IIFE for better React reconciliation
   // methodOverride: For 'comparar_todos' mode, we pass each method explicitly
+  // Academic-style design with educational clarity
   const renderTableRows = (methodOverride?: 'pearson' | 'spearman' | 'kendall') => {
     if (!correlationData) {
       // Loading/error states are handled in the outer conditional
@@ -238,14 +273,19 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
       : activeSegmentTab; // Always use activeSegmentTab for proper tracking
     const matrixData = correlationData?.tables?.[currentSegment]?.[currentMethod]?.matrix;
 
+    // Determine metric label based on method
+    const metricLabel = currentMethod === 'pearson' ? 'Coeficiente (r)'
+      : currentMethod === 'spearman' ? 'Coeficiente (ρ)'
+        : 'Coeficiente (τ)';
+
     if (!matrixData) {
       return (
         <tr key="no-data-row">
-          <td colSpan={selectedVars.length + 2} className="px-6 py-4 text-center border-b border-slate-200 bg-amber-50/30">
-            <p className="text-amber-700 text-sm" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <td colSpan={selectedVars.length + 2} className="px-6 py-8 text-center bg-amber-50/30">
+            <p className="text-amber-700 text-base font-medium" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
               ⚠️ No hay datos disponibles para esta combinación de método y segmento.
             </p>
-            <p className="text-amber-600 text-xs mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+            <p className="text-amber-600 text-sm mt-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
               Intente generar las correlaciones nuevamente o seleccione otra configuración.
             </p>
           </td>
@@ -254,77 +294,82 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     }
 
     return selectedVars.map((rowVar, rowIndex) => (
-      <tr key={`${currentSegment}-${currentMethod}-${rowVar}`} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'}>
-        <td className="px-6 py-3 text-slate-900 align-top border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+      <tr key={`${currentSegment}-${currentMethod}-${rowVar}`}>
+        {/* Variable Name Column */}
+        <td
+          className="py-6 px-6 align-middle text-slate-900 border-r border-b border-slate-200"
+          style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '15px', fontWeight: 500 }}
+        >
           {rowVar}
         </td>
 
-        <td className="px-4 py-2 align-top border-b border-slate-200 bg-slate-50/30">
-          <div className="flex flex-col py-2">
-            <div className="text-slate-600 pb-2 border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 600, fontSize: '13px' }}>Coef. (r)</div>
-            <div className="text-slate-600 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>p-valor</div>
-            <div className="text-slate-600 pt-2 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>N</div>
+        {/* Metrics Labels Column */}
+        <td className="py-6 px-6 align-middle border-r border-b border-slate-200 bg-slate-50/50">
+          <div className="flex flex-col gap-3 text-slate-600" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}>
+            <span>{metricLabel}</span>
+            <span>p-valor</span>
+            <span>N (pares)</span>
           </div>
         </td>
 
+        {/* Data Cells for each column variable */}
         {selectedVars.map((colVar) => {
           const pairData = matrixData[rowVar]?.[colVar];
+          const isDiagonal = rowVar === colVar;
+
           if (!pairData) {
             return (
-              <td key={colVar} className="px-2 py-2 text-center align-top">
-                <div className={`rounded-md shadow-sm transition-transform hover:scale-105 ${getCellStyles(null, true)}`}>
-                  <div className="py-2">
-                    <div className={`pb-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
-                    <div className={`py-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
-                    <div className={`pt-2 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
-                  </div>
+              <td
+                key={colVar}
+                className="py-6 px-6 text-center align-middle border-r border-b border-slate-200 last:border-r-0"
+              >
+                <div className="flex flex-col gap-3 items-center justify-center text-slate-400" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}>
+                  <span>—</span>
+                  <span>—</span>
+                  <span>—</span>
                 </div>
               </td>
             );
           }
 
           const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
-          const isDiagonal = rowVar === colVar;
-          const cellStyles = getCellStyles(pairData.r, isDiagonal);
-          const isStrongText = pairData.r !== null && Math.abs(pairData.r) > 0.6 && !isDiagonal;
+          const cellBg = getCellBackground(pairData.r, isDiagonal);
+          const coefColorClass = getCoefColor(pairData.r, isDiagonal);
 
           return (
             <td
               key={colVar}
-              className="px-2 py-2 text-center align-top"
+              className={`py-6 px-6 text-center align-middle border-r border-b border-slate-200 last:border-r-0 ${cellBg}`}
             >
-              <div className={`py-2 rounded-md shadow-sm transition-transform hover:scale-105 ${cellStyles}`}>
-                <div
-                  className={`pb-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
-                  style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
-                  }}
+              <div className="flex flex-col gap-3 items-center justify-center">
+                {/* Coefficient with significance stars */}
+                <span
+                  className={`text-lg ${coefColorClass}`}
+                  style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                 >
                   {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
                   {significance && (
-                    <span className={`ml-0.5 ${isStrongText ? 'text-amber-200' : 'text-teal-700'}`}>
-                      {significance}
-                    </span>
+                    <span className="ml-1 text-amber-600 font-semibold">{significance}</span>
                   )}
-                </div>
+                </span>
 
-                <div
-                  className={`py-2 border-b border-white/20 leading-relaxed tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
-                  style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
-                  }}
+                {/* p-value */}
+                <span
+                  className="text-slate-600"
+                  style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}
                 >
-                  {pairData.p_value !== null ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)) : '—'}
-                </div>
+                  {pairData.p_value !== null
+                    ? (pairData.p_value < 0.001 ? '< 0,001' : pairData.p_value.toFixed(3).replace('.', ','))
+                    : '—'}
+                </span>
 
-                <div
-                  className={`pt-2 leading-relaxed tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
-                  style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
-                  }}
+                {/* N (sample size) */}
+                <span
+                  className="text-slate-600"
+                  style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' }}
                 >
-                  {pairData.n !== null ? pairData.n : '—'}
-                </div>
+                  {pairData.n !== null ? pairData.n.toLocaleString('es-ES') : '—'}
+                </span>
               </div>
             </td>
           );
@@ -724,103 +769,127 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
               <div className="space-y-8">
                 {(['pearson', 'spearman', 'kendall'] as const).map((subMethod) => (
                   <div key={subMethod} className="overflow-x-auto">
-                    {/* Method Header */}
-                    <div className="px-6 py-3 bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-teal-200">
-                      <h4 className="text-base font-bold text-slate-800" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                        {subMethod === 'pearson' ? 'Correlación de Pearson' : subMethod === 'spearman' ? 'rho de Spearman' : 'tau de Kendall'}
+                    {/* Method Header - Academic Style */}
+                    <div className="px-6 py-4 bg-gradient-to-r from-slate-100 to-slate-50 border-b border-slate-300">
+                      <h4 className="text-lg font-bold text-slate-800" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                        {subMethod === 'pearson' ? 'Correlación de Pearson (r)' : subMethod === 'spearman' ? 'Correlación de Spearman (ρ)' : 'Correlación de Kendall (τ)'}
                       </h4>
                     </div>
-                    {/* Correlation Table for this method */}
-                    <table className="w-full border-separate border-spacing-1">
-                      <thead>
-                        <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
-                          <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                            Variable
-                          </th>
-                          <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                            Métrica
-                          </th>
-                          {selectedVars.map((variable) => (
-                            <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                              {variable}
+                    {/* Academic Correlation Table */}
+                    <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm mx-4 my-4">
+                      <table className="w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#f2f2f2' }}>
+                            <th
+                              className="py-4 px-6 text-left border-r border-b border-slate-200"
+                              style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '15px', color: '#444746' }}
+                            >
+                              Variable
                             </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody key={`${tbodyKey}-${subMethod}`}>
-                        {!correlationData ? (
-                          <tr key="status-row">
-                            <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
-                              <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                {loading ? (
-                                  <div className="flex items-center justify-center gap-3">
-                                    <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                                    <span>Calculando correlaciones...</span>
-                                  </div>
-                                ) : error ? (
-                                  <div className="text-red-600">
-                                    <p className="font-medium">Error al calcular correlaciones</p>
-                                    <p className="text-sm mt-1">{error}</p>
-                                  </div>
-                                ) : (
-                                  <p>Seleccione al menos 2 variables numéricas para calcular correlaciones</p>
-                                )}
-                              </div>
-                            </td>
+                            <th
+                              className="py-4 px-6 text-left border-r border-b border-slate-200"
+                              style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '15px', color: '#444746' }}
+                            >
+                              Métrica
+                            </th>
+                            {selectedVars.map((variable, idx) => (
+                              <th
+                                key={variable}
+                                className={`py-4 px-6 text-center border-b border-slate-200 ${idx < selectedVars.length - 1 ? 'border-r' : ''}`}
+                                style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '15px', color: '#444746', minWidth: '140px' }}
+                              >
+                                {variable}
+                              </th>
+                            ))}
                           </tr>
-                        ) : (
-                          renderTableRows(subMethod)
-                        )}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody key={`${tbodyKey}-${subMethod}`}>
+                          {!correlationData ? (
+                            <tr key="status-row">
+                              <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
+                                <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                  {loading ? (
+                                    <div className="flex items-center justify-center gap-3">
+                                      <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                                      <span>Calculando correlaciones...</span>
+                                    </div>
+                                  ) : error ? (
+                                    <div className="text-red-600">
+                                      <p className="font-medium">Error al calcular correlaciones</p>
+                                      <p className="text-sm mt-1">{error}</p>
+                                    </div>
+                                  ) : (
+                                    <p>Seleccione al menos 2 variables numéricas para calcular correlaciones</p>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            renderTableRows(subMethod)
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              // SINGLE METHOD MODE: Render one table
+              // SINGLE METHOD MODE: Render one table with academic styling
               <div className="overflow-x-auto">
-                <table className="w-full border-separate border-spacing-1">
-                  <thead>
-                    <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
-                      <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                        Variable
-                      </th>
-                      <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                        Métrica
-                      </th>
-                      {selectedVars.map((variable) => (
-                        <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                          {variable}
+                <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm mx-4 my-4">
+                  <table className="w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f2f2f2' }}>
+                        <th
+                          className="py-4 px-6 text-left border-r border-b border-slate-200"
+                          style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '15px', color: '#444746' }}
+                        >
+                          Variable
                         </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody key={tbodyKey}>
-                    {!correlationData ? (
-                      <tr key="status-row">
-                        <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
-                          <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                            {loading ? (
-                              <div className="flex items-center justify-center gap-3">
-                                <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                                <span>Calculando correlaciones...</span>
-                              </div>
-                            ) : error ? (
-                              <div className="text-red-600">
-                                <p className="font-medium">Error al calcular correlaciones</p>
-                                <p className="text-sm mt-1">{error}</p>
-                              </div>
-                            ) : (
-                              <p>Seleccione al menos 2 variables numéricas para calcular correlaciones (Auto-cálculo)</p>
-                            )}
-                          </div>
-                        </td>
+                        <th
+                          className="py-4 px-6 text-left border-r border-b border-slate-200"
+                          style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '15px', color: '#444746' }}
+                        >
+                          Métrica
+                        </th>
+                        {selectedVars.map((variable, idx) => (
+                          <th
+                            key={variable}
+                            className={`py-4 px-6 text-center border-b border-slate-200 ${idx < selectedVars.length - 1 ? 'border-r' : ''}`}
+                            style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '15px', color: '#444746', minWidth: '140px' }}
+                          >
+                            {variable}
+                          </th>
+                        ))}
                       </tr>
-                    ) : (
-                      renderTableRows()
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody key={tbodyKey}>
+                      {!correlationData ? (
+                        <tr key="status-row">
+                          <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
+                            <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                              {loading ? (
+                                <div className="flex items-center justify-center gap-3">
+                                  <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                                  <span>Calculando correlaciones...</span>
+                                </div>
+                              ) : error ? (
+                                <div className="text-red-600">
+                                  <p className="font-medium">Error al calcular correlaciones</p>
+                                  <p className="text-sm mt-1">{error}</p>
+                                </div>
+                              ) : (
+                                <p>Seleccione al menos 2 variables numéricas para calcular correlaciones (Auto-cálculo)</p>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        renderTableRows()
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -858,6 +927,6 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
