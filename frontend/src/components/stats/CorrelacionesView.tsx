@@ -9,23 +9,28 @@ interface CorrelacionesViewProps {
   onBack: () => void;
 }
 
-// Helper function to calculate heatmap color based on correlation coefficient
-const getCorrelationColor = (r: number | null): string => {
-  if (r === null) return 'transparent';
-
-  // Clamp r between -1 and 1
-  const clampedR = Math.max(-1, Math.min(1, r));
-
-  // Interpolate between red (-1), white (0), and blue (+1)
-  if (clampedR >= 0) {
-    // Positive: white to blue
-    const intensity = Math.round(clampedR * 255);
-    return `rgba(37, 99, 235, ${clampedR * 0.6 + 0.1})`; // Blue with varying opacity
-  } else {
-    // Negative: white to red
-    const intensity = Math.round(Math.abs(clampedR) * 255);
-    return `rgba(220, 38, 38, ${Math.abs(clampedR) * 0.6 + 0.1})`; // Red with varying opacity
+const getCellStyles = (value: number | null, isDiagonal: boolean): string => {
+  if (isDiagonal || value === null) {
+    return 'bg-slate-50 text-slate-400';
   }
+
+  if (value <= -0.7) {
+    return 'bg-rose-500/90 text-white';
+  }
+
+  if (value <= -0.3) {
+    return 'bg-rose-200 text-rose-900';
+  }
+
+  if (value < 0.3) {
+    return 'bg-slate-50 text-slate-400';
+  }
+
+  if (value < 0.7) {
+    return 'bg-indigo-200 text-indigo-900';
+  }
+
+  return 'bg-indigo-500/90 text-white';
 };
 
 type CorrelationMethod = 'comparar_todos' | 'pearson' | 'spearman' | 'kendall';
@@ -162,6 +167,12 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     return '';
   };
 
+  const numericTextClass = selectedVars.length > 10
+    ? 'text-[11px]'
+    : selectedVars.length <= 5
+      ? 'text-[14px]'
+      : 'text-[12px]';
+
   // Determine which tabs to show
   // In 'comparar_todos' mode, we show all 3 matrices vertically instead of using tabs
   const showMethodTabs = false; // No method tabs - show inline for comparar_todos
@@ -242,11 +253,13 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
           const pairData = matrixData[rowVar]?.[colVar];
           if (!pairData) {
             return (
-              <td key={colVar} className="px-6 py-2 text-center border-b border-slate-200">
-                <div className="py-2">
-                  <div className="text-slate-400 pb-2 border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '14px' }}>—</div>
-                  <div className="text-slate-400 py-2 border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '13px' }}>—</div>
-                  <div className="text-slate-400 pt-2" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500, fontSize: '13px' }}>—</div>
+              <td key={colVar} className="px-2 py-2 text-center align-top">
+                <div className={`rounded-md shadow-sm transition-transform hover:scale-105 ${getCellStyles(null, true)}`}>
+                  <div className="py-2">
+                    <div className={`pb-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
+                    <div className={`py-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
+                    <div className={`pt-2 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
+                  </div>
                 </div>
               </td>
             );
@@ -255,50 +268,43 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
           const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
           const isDiagonal = rowVar === colVar;
           const isStrongCorrelation = pairData.r !== null && Math.abs(pairData.r) > 0.7 && !isDiagonal;
-
-          // Calculate heatmap background color
-          const bgColor = getCorrelationColor(pairData.r);
-          const textColor = pairData.r !== null && Math.abs(pairData.r) > 0.6 ? 'white' : 'inherit';
+          const cellStyles = getCellStyles(pairData.r, isDiagonal);
+          const isStrongText = pairData.r !== null && Math.abs(pairData.r) > 0.6 && !isDiagonal;
 
           return (
             <td
               key={colVar}
-              className="px-6 py-2 text-center border-b border-slate-200 transition-colors"
-              style={{ backgroundColor: bgColor }}
+              className="px-2 py-2 text-center align-top"
             >
-              <div className="py-2">
+              <div className={`py-2 rounded-md shadow-sm transition-transform hover:scale-105 ${cellStyles}`}>
                 <div
-                  className={`pb-2 border-b border-slate-200/50 ${isDiagonal ? 'text-slate-500' : ''}`}
+                  className={`pb-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''} ${isStrongCorrelation ? 'font-semibold' : ''}`}
                   style={{
                     fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace',
-                    fontWeight: isDiagonal ? 500 : isStrongCorrelation ? 700 : 600,
-                    fontSize: '14px',
-                    color: !isDiagonal ? textColor : undefined
+                    fontWeight: isDiagonal ? 500 : isStrongCorrelation ? 700 : 600
                   }}
                 >
                   {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
-                  {significance && <span className="ml-0.5" style={{ color: pairData.r !== null && Math.abs(pairData.r) > 0.6 ? '#fef08a' : '#0d9488' }}>{significance}</span>}
+                  {significance && (
+                    <span className={`ml-0.5 ${isStrongText ? 'text-amber-200' : 'text-teal-700'}`}>
+                      {significance}
+                    </span>
+                  )}
                 </div>
 
                 <div
-                  className="py-2 border-b border-slate-200/50 leading-relaxed"
+                  className={`py-2 border-b border-white/20 leading-relaxed tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
                   style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    color: !isDiagonal ? textColor : '#64748b'
+                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
                   }}
                 >
                   {pairData.p_value !== null ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)) : '—'}
                 </div>
 
                 <div
-                  className="pt-2 leading-relaxed"
+                  className={`pt-2 leading-relaxed tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
                   style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    color: !isDiagonal ? textColor : '#64748b'
+                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
                   }}
                 >
                   {pairData.n !== null ? pairData.n : '—'}
@@ -709,7 +715,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                       </h4>
                     </div>
                     {/* Correlation Table for this method */}
-                    <table className="w-full border-collapse">
+                    <table className="w-full border-separate border-spacing-1">
                       <thead>
                         <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
                           <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
@@ -757,7 +763,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
             ) : (
               // SINGLE METHOD MODE: Render one table
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
+                <table className="w-full border-separate border-spacing-1">
                   <thead>
                     <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
                       <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
