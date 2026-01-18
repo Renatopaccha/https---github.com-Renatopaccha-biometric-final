@@ -220,32 +220,30 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     setActiveSegmentTab('General');
   }, [segmentBy]);
 
-  // Helper function to render table rows - eliminates IIFE for better React reconciliation
+  // Helper function to render table rows - Academic Modern Style
   // methodOverride: For 'comparar_todos' mode, we pass each method explicitly
   const renderTableRows = (methodOverride?: 'pearson' | 'spearman' | 'kendall') => {
     if (!correlationData) {
-      // Loading/error states are handled in the outer conditional
       return null;
     }
 
-    // Use methodOverride if provided (for Compare All mode), otherwise fall back to selected method
     const currentMethod = methodOverride
       ? methodOverride
       : (method === 'comparar_todos' ? 'pearson' : method as 'pearson' | 'spearman' | 'kendall');
     const availableSegments = correlationData?.segments || ['General'];
     const currentSegment = showSegmentTabs
       ? (availableSegments.includes(activeSegmentTab) ? activeSegmentTab : availableSegments[0])
-      : activeSegmentTab; // Always use activeSegmentTab for proper tracking
+      : activeSegmentTab;
     const matrixData = correlationData?.tables?.[currentSegment]?.[currentMethod]?.matrix;
 
     if (!matrixData) {
       return (
         <tr key="no-data-row">
-          <td colSpan={selectedVars.length + 2} className="px-6 py-4 text-center border-b border-slate-200 bg-amber-50/30">
-            <p className="text-amber-700 text-sm" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <td colSpan={selectedVars.length + 1} className="py-8 px-6 text-center border-b border-[#e0e0e0] bg-[#fffbeb]">
+            <p className="text-[#92400e] text-sm font-medium">
               ⚠️ No hay datos disponibles para esta combinación de método y segmento.
             </p>
-            <p className="text-amber-600 text-xs mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+            <p className="text-[#b45309] text-xs mt-1">
               Intente generar las correlaciones nuevamente o seleccione otra configuración.
             </p>
           </td>
@@ -253,78 +251,70 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
       );
     }
 
+    const isLastRow = (index: number) => index === selectedVars.length - 1;
+
     return selectedVars.map((rowVar, rowIndex) => (
-      <tr key={`${currentSegment}-${currentMethod}-${rowVar}`} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'}>
-        <td className="px-6 py-3 text-slate-900 align-top border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+      <tr key={`${currentSegment}-${currentMethod}-${rowVar}`}>
+        {/* Variable Name Column */}
+        <td
+          className={`py-4 px-6 text-left text-[#202124] font-bold text-base bg-white ${!isLastRow(rowIndex) ? 'border-b border-[#e0e0e0]' : ''}`}
+          style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+        >
           {rowVar}
         </td>
 
-        <td className="px-4 py-2 align-top border-b border-slate-200 bg-slate-50/30">
-          <div className="flex flex-col py-2">
-            <div className="text-slate-600 pb-2 border-b border-slate-200" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 600, fontSize: '13px' }}>Coef. (r)</div>
-            <div className="text-slate-600 py-2 border-b border-slate-200 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>p-valor</div>
-            <div className="text-slate-600 pt-2 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, fontSize: '12px' }}>N</div>
-          </div>
-        </td>
-
-        {selectedVars.map((colVar) => {
+        {/* Data Cells */}
+        {selectedVars.map((colVar, colIndex) => {
           const pairData = matrixData[rowVar]?.[colVar];
+          const isDiagonal = rowVar === colVar;
+          const isLastCol = colIndex === selectedVars.length - 1;
+
           if (!pairData) {
             return (
-              <td key={colVar} className="px-2 py-2 text-center align-top">
-                <div className={`rounded-md shadow-sm transition-transform hover:scale-105 ${getCellStyles(null, true)}`}>
-                  <div className="py-2">
-                    <div className={`pb-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
-                    <div className={`py-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
-                    <div className={`pt-2 tabular-nums font-medium ${numericTextClass}`} style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace' }}>—</div>
-                  </div>
+              <td
+                key={colVar}
+                className={`py-6 px-6 text-center ${!isLastRow(rowIndex) ? 'border-b border-[#e0e0e0]' : ''} ${!isLastCol ? 'border-r border-[#e0e0e0]' : ''} ${isDiagonal ? 'bg-[#e8f0fe]' : 'bg-white'}`}
+              >
+                <div className="flex flex-col items-center justify-center gap-1">
+                  <span className="text-[#9aa0a6] font-medium text-lg">—</span>
                 </div>
               </td>
             );
           }
 
           const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
-          const isDiagonal = rowVar === colVar;
-          const cellStyles = getCellStyles(pairData.r, isDiagonal);
-          const isStrongText = pairData.r !== null && Math.abs(pairData.r) > 0.6 && !isDiagonal;
 
           return (
             <td
               key={colVar}
-              className="px-2 py-2 text-center align-top"
+              className={`py-6 px-6 text-center ${!isLastRow(rowIndex) ? 'border-b border-[#e0e0e0]' : ''} ${!isLastCol ? 'border-r border-[#e0e0e0]' : ''} ${isDiagonal ? 'bg-[#e8f0fe]' : 'bg-white'}`}
             >
-              <div className={`py-2 rounded-md shadow-sm transition-transform hover:scale-105 ${cellStyles}`}>
-                <div
-                  className={`pb-2 border-b border-white/20 tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
-                  style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
-                  }}
+              <div className="flex flex-col items-center justify-center gap-1">
+                {/* Coefficient - Large, Bold, Blue */}
+                <span
+                  className="text-[#1a73e8] font-bold text-xl tabular-nums"
+                  style={{ fontFamily: 'IBM Plex Mono, monospace' }}
                 >
                   {pairData.r !== null ? pairData.r.toFixed(3) : '—'}
                   {significance && (
-                    <span className={`ml-0.5 ${isStrongText ? 'text-amber-200' : 'text-teal-700'}`}>
-                      {significance}
-                    </span>
+                    <span className="text-[#ea8600] ml-0.5 text-sm">{significance}</span>
                   )}
-                </div>
-
-                <div
-                  className={`py-2 border-b border-white/20 leading-relaxed tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
-                  style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
-                  }}
-                >
-                  {pairData.p_value !== null ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)) : '—'}
-                </div>
-
-                <div
-                  className={`pt-2 leading-relaxed tabular-nums font-medium ${numericTextClass} ${isDiagonal ? 'text-slate-500' : ''}`}
-                  style={{
-                    fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace'
-                  }}
-                >
-                  {pairData.n !== null ? pairData.n : '—'}
-                </div>
+                </span>
+                {/* P-value - Small, Gray */}
+                {pairData.p_value !== undefined && pairData.p_value !== null && (
+                  <span
+                    className="text-[#444746] text-sm tabular-nums"
+                    style={{ fontFamily: 'IBM Plex Mono, monospace' }}
+                  >
+                    p: {pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3)}
+                  </span>
+                )}
+                {/* N - Extra small */}
+                {pairData.n !== null && pairData.n !== undefined && (
+                  <span className="text-[#80868b] text-xs">
+                    n = {pairData.n}
+                  </span>
+                )}
               </div>
             </td>
           );
@@ -709,56 +699,175 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
             </div>
           )}
 
-          {/* Results Table */}
-          <div className={`bg-white ${showMethodTabs || showSegmentTabs ? 'rounded-b-xl' : 'rounded-xl'} shadow-lg border border-slate-200 overflow-hidden`}>
-            <div className="px-8 py-5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
-              <p className="text-sm text-slate-600 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                <strong>Método activo:</strong> {methodLabels[method]}
-                {` • Segmento: `}<strong>{activeSegmentTab}</strong>
+          {/* Results Table - Academic Spearman Style */}
+          <div className="w-full overflow-x-auto p-4 bg-[#f0f4f8] rounded-xl">
+            {/* Header del Reporte */}
+            <header className="mb-6 text-center">
+              <h1 className="text-3xl text-[#202124] font-normal" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                Matriz de Correlación: {method === 'pearson' ? 'Pearson' : method === 'spearman' ? 'Spearman' : method === 'kendall' ? 'Kendall' : 'Comparación'}
+              </h1>
+              <p className="text-[#444746] mt-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                Segmento: {activeSegmentTab}
               </p>
-            </div>
+            </header>
 
             {/* Conditional rendering: Compare All vs Single Method */}
             {method === 'comparar_todos' ? (
               // COMPARE ALL MODE: Render 3 matrices vertically
               <div className="space-y-8">
-                {(['pearson', 'spearman', 'kendall'] as const).map((subMethod) => (
-                  <div key={subMethod} className="overflow-x-auto">
-                    {/* Method Header */}
-                    <div className="px-6 py-3 bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-teal-200">
-                      <h4 className="text-base font-bold text-slate-800" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                        {subMethod === 'pearson' ? 'Correlación de Pearson' : subMethod === 'spearman' ? 'rho de Spearman' : 'tau de Kendall'}
-                      </h4>
+                {(['pearson', 'spearman', 'kendall'] as const).map((subMethod) => {
+                  const currentSegment = activeSegmentTab;
+                  const matrixData = correlationData?.tables?.[currentSegment]?.[subMethod]?.matrix;
+
+                  return (
+                    <div key={subMethod}>
+                      {/* Method Sub-Header */}
+                      <h2 className="text-xl text-[#1a73e8] font-semibold mb-3 text-center" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                        {subMethod === 'pearson' ? 'Correlación de Pearson' : subMethod === 'spearman' ? 'ρ de Spearman' : 'τ de Kendall'}
+                      </h2>
+
+                      {/* Contenedor de la Tabla con Bordes Redondeados */}
+                      <div className="bg-white border border-[#e0e0e0] shadow-md rounded-lg overflow-hidden inline-block min-w-full">
+                        <table className="w-full border-separate border-spacing-0">
+                          <thead>
+                            <tr className="bg-[#f2f2f2]">
+                              {/* Columna Variable Fija */}
+                              <th className="py-4 px-6 text-left font-bold text-lg text-[#444746] border-b border-r border-[#e0e0e0] w-1/4" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                Variable
+                              </th>
+
+                              {/* Columnas Dinámicas */}
+                              {selectedVars.map((colVar, idx) => (
+                                <th
+                                  key={colVar}
+                                  className={`py-4 px-6 text-center font-bold text-lg text-[#444746] border-b border-[#e0e0e0] ${idx !== selectedVars.length - 1 ? 'border-r' : ''}`}
+                                  style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                                >
+                                  {colVar}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+
+                          <tbody className="text-[#202124]">
+                            {!correlationData || !matrixData ? (
+                              <tr>
+                                <td colSpan={selectedVars.length + 1} className="px-6 py-12 text-center bg-white">
+                                  <div className="text-[#5f6368]" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                    {loading ? (
+                                      <div className="flex items-center justify-center gap-3">
+                                        <div className="w-5 h-5 border-2 border-[#1a73e8] border-t-transparent rounded-full animate-spin" />
+                                        <span>Calculando correlaciones...</span>
+                                      </div>
+                                    ) : error ? (
+                                      <div className="text-[#d93025]">
+                                        <p className="font-medium">Error al calcular correlaciones</p>
+                                        <p className="text-sm mt-1">{error}</p>
+                                      </div>
+                                    ) : (
+                                      <p>Seleccione al menos 2 variables numéricas para calcular correlaciones</p>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : (
+                              selectedVars.map((rowVar, rowIndex) => (
+                                <tr key={rowVar}>
+                                  {/* Nombre de la Fila */}
+                                  <td className="py-6 px-6 text-lg font-medium text-[#202124] border-b border-r border-[#e0e0e0] bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                    {rowVar}
+                                  </td>
+
+                                  {/* Celdas de Datos */}
+                                  {selectedVars.map((colVar, colIndex) => {
+                                    const isDiagonal = rowVar === colVar;
+                                    const cell = matrixData?.[rowVar]?.[colVar];
+
+                                    const isLastCol = colIndex === selectedVars.length - 1;
+                                    const isLastRow = rowIndex === selectedVars.length - 1;
+                                    const borderClasses = `${!isLastCol ? 'border-r' : ''} ${!isLastRow ? 'border-b' : ''} border-[#e0e0e0]`;
+                                    const bgClass = isDiagonal ? 'bg-[#e8f0fe]' : 'bg-white';
+
+                                    return (
+                                      <td key={`${rowVar}-${colVar}`} className={`py-6 px-6 text-center align-middle ${borderClasses} ${bgClass}`}>
+                                        {cell ? (
+                                          <div className="flex flex-col items-center justify-center gap-1">
+                                            {/* Coeficiente Grande y Azul */}
+                                            <span className="text-[#1a73e8] font-bold text-xl tabular-nums" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
+                                              {cell.r !== null && cell.r !== undefined ? cell.r.toFixed(3) : '—'}
+                                              {cell.p_value !== null && cell.p_value !== undefined && cell.p_value < 0.05 && (
+                                                <span className="text-[#ea8600] ml-0.5 text-sm">
+                                                  {cell.p_value < 0.001 ? '***' : cell.p_value < 0.01 ? '**' : '*'}
+                                                </span>
+                                              )}
+                                            </span>
+
+                                            {/* P-Valor y N en gris pequeño */}
+                                            {cell.p_value !== undefined && cell.p_value !== null && (
+                                              <div className="flex flex-col text-[#444746] text-xs mt-1" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
+                                                <span>p: {cell.p_value < 0.001 ? '< 0.001' : cell.p_value.toFixed(3)}</span>
+                                                {cell.n !== null && cell.n !== undefined && <span>n: {cell.n}</span>}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <span className="text-slate-300">—</span>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                    {/* Correlation Table for this method */}
-                    <table className="w-full border-separate border-spacing-1">
+                  );
+                })}
+              </div>
+            ) : (
+              // SINGLE METHOD MODE: Render one table
+              (() => {
+                const currentMethod = method as 'pearson' | 'spearman' | 'kendall';
+                const currentSegment = activeSegmentTab;
+                const matrixData = correlationData?.tables?.[currentSegment]?.[currentMethod]?.matrix;
+
+                return (
+                  <div className="bg-white border border-[#e0e0e0] shadow-md rounded-lg overflow-hidden inline-block min-w-full">
+                    <table className="w-full border-separate border-spacing-0">
                       <thead>
-                        <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
-                          <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
+                        <tr className="bg-[#f2f2f2]">
+                          {/* Columna Variable Fija */}
+                          <th className="py-4 px-6 text-left font-bold text-lg text-[#444746] border-b border-r border-[#e0e0e0] w-1/4" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                             Variable
                           </th>
-                          <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                            Métrica
-                          </th>
-                          {selectedVars.map((variable) => (
-                            <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                              {variable}
+
+                          {/* Columnas Dinámicas */}
+                          {selectedVars.map((colVar, idx) => (
+                            <th
+                              key={colVar}
+                              className={`py-4 px-6 text-center font-bold text-lg text-[#444746] border-b border-[#e0e0e0] ${idx !== selectedVars.length - 1 ? 'border-r' : ''}`}
+                              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                            >
+                              {colVar}
                             </th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody key={`${tbodyKey}-${subMethod}`}>
-                        {!correlationData ? (
-                          <tr key="status-row">
-                            <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
-                              <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+                      <tbody className="text-[#202124]">
+                        {!correlationData || !matrixData ? (
+                          <tr>
+                            <td colSpan={selectedVars.length + 1} className="px-6 py-12 text-center bg-white">
+                              <div className="text-[#5f6368]" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                                 {loading ? (
                                   <div className="flex items-center justify-center gap-3">
-                                    <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                                    <div className="w-5 h-5 border-2 border-[#1a73e8] border-t-transparent rounded-full animate-spin" />
                                     <span>Calculando correlaciones...</span>
                                   </div>
                                 ) : error ? (
-                                  <div className="text-red-600">
+                                  <div className="text-[#d93025]">
                                     <p className="font-medium">Error al calcular correlaciones</p>
                                     <p className="text-sm mt-1">{error}</p>
                                   </div>
@@ -769,93 +878,99 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                             </td>
                           </tr>
                         ) : (
-                          renderTableRows(subMethod)
+                          selectedVars.map((rowVar, rowIndex) => (
+                            <tr key={rowVar}>
+                              {/* Nombre de la Fila */}
+                              <td className="py-6 px-6 text-lg font-medium text-[#202124] border-b border-r border-[#e0e0e0] bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                                {rowVar}
+                              </td>
+
+                              {/* Celdas de Datos */}
+                              {selectedVars.map((colVar, colIndex) => {
+                                const isDiagonal = rowVar === colVar;
+                                const cell = matrixData?.[rowVar]?.[colVar];
+
+                                const isLastCol = colIndex === selectedVars.length - 1;
+                                const isLastRow = rowIndex === selectedVars.length - 1;
+                                const borderClasses = `${!isLastCol ? 'border-r' : ''} ${!isLastRow ? 'border-b' : ''} border-[#e0e0e0]`;
+                                const bgClass = isDiagonal ? 'bg-[#e8f0fe]' : 'bg-white';
+
+                                return (
+                                  <td key={`${rowVar}-${colVar}`} className={`py-6 px-6 text-center align-middle ${borderClasses} ${bgClass}`}>
+                                    {cell ? (
+                                      <div className="flex flex-col items-center justify-center gap-1">
+                                        {/* Coeficiente Grande y Azul */}
+                                        <span className="text-[#1a73e8] font-bold text-xl tabular-nums" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
+                                          {cell.r !== null && cell.r !== undefined ? cell.r.toFixed(3) : '—'}
+                                          {cell.p_value !== null && cell.p_value !== undefined && cell.p_value < 0.05 && (
+                                            <span className="text-[#ea8600] ml-0.5 text-sm">
+                                              {cell.p_value < 0.001 ? '***' : cell.p_value < 0.01 ? '**' : '*'}
+                                            </span>
+                                          )}
+                                        </span>
+
+                                        {/* P-Valor y N en gris pequeño */}
+                                        {cell.p_value !== undefined && cell.p_value !== null && (
+                                          <div className="flex flex-col text-[#444746] text-xs mt-1" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
+                                            <span>p: {cell.p_value < 0.001 ? '< 0.001' : cell.p_value.toFixed(3)}</span>
+                                            {cell.n !== null && cell.n !== undefined && <span>n: {cell.n}</span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))
                         )}
                       </tbody>
                     </table>
                   </div>
-                ))}
-              </div>
-            ) : (
-              // SINGLE METHOD MODE: Render one table
-              <div className="overflow-x-auto">
-                <table className="w-full border-separate border-spacing-1">
-                  <thead>
-                    <tr className="bg-gradient-to-b from-slate-50 to-slate-100">
-                      <th className="px-6 py-4 text-left text-slate-700 border-b border-slate-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                        Variable
-                      </th>
-                      <th className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 bg-slate-50/50" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                        Métrica
-                      </th>
-                      {selectedVars.map((variable) => (
-                        <th key={variable} className="px-6 py-4 text-center text-slate-700 border-b border-slate-300 min-w-[140px]" style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '14px' }}>
-                          {variable}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody key={tbodyKey}>
-                    {!correlationData ? (
-                      <tr key="status-row">
-                        <td colSpan={selectedVars.length + 2} className="px-6 py-12 text-center">
-                          <div className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                            {loading ? (
-                              <div className="flex items-center justify-center gap-3">
-                                <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                                <span>Calculando correlaciones...</span>
-                              </div>
-                            ) : error ? (
-                              <div className="text-red-600">
-                                <p className="font-medium">Error al calcular correlaciones</p>
-                                <p className="text-sm mt-1">{error}</p>
-                              </div>
-                            ) : (
-                              <p>Seleccione al menos 2 variables numéricas para calcular correlaciones (Auto-cálculo)</p>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      renderTableRows()
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                );
+              })()
             )}
 
-            <div className="px-8 py-4 border-t border-slate-200 bg-white">
-              <div className="space-y-3">
-                <div className="h-3 rounded-full bg-gradient-to-r from-rose-500 via-slate-100 to-indigo-500" />
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-slate-600" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                  <span>Correlación Negativa (-1)</span>
-                  <span>Sin Relación (0)</span>
-                  <span>Correlación Positiva (+1)</span>
-                </div>
-              </div>
+            {/* Leyenda Footer */}
+            <div className="mt-4 text-sm text-[#444746] flex justify-end gap-6 px-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 bg-[#e8f0fe] border border-[#e0e0e0] rounded-sm"></span>
+                Diagonal (r = 1)
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-[#1a73e8] font-bold">0.XXX</span>
+                Coeficiente
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-[#ea8600] font-bold">*</span>
+                p {'<'} 0.05
+              </span>
             </div>
 
-            <div className="px-8 py-5 bg-gradient-to-b from-slate-50 to-slate-100 border-t-2 border-slate-300">
+            {/* Footer Notes */}
+            <div className="mt-4 px-2 py-3 bg-white border border-[#e0e0e0] rounded-lg">
               <div className="flex items-start gap-6">
                 <div className="flex-1">
-                  <p className="text-xs font-medium text-slate-700 mb-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  <p className="text-xs font-medium text-[#202124] mb-1" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                     Método: {methodLabels[method]}
                   </p>
-                  <p className="text-xs text-slate-600 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    Se resalta r cuando p {'<'} 0.05 (*), p {'<'} 0.01 (**) y p {'<'} 0.001 (***).
+                  <p className="text-xs text-[#5f6368] leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    Significancia: p {'<'} 0.05 (*), p {'<'} 0.01 (**), p {'<'} 0.001 (***).
                     {filterActive && ` • Filtro activo: ${filterRules.length} regla(s) con lógica ${filterLogic}.`}
                   </p>
                 </div>
                 <div>
-                  <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    ✓ Formato publicación
+                  <span className="inline-flex items-center px-3 py-1.5 bg-[#e8f0fe] text-[#1a73e8] rounded-full text-xs font-medium" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    ✓ Formato Académico
                   </span>
                 </div>
               </div>
             </div>
-
-            <ActionToolbar />
           </div>
+
+          <ActionToolbar />
         </div>
       </div>
     </div>
