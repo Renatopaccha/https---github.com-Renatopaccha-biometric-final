@@ -1,7 +1,7 @@
 import { ArrowLeft, ChevronDown, Plus, Trash2, Filter, ChevronRight, Play } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ActionToolbar } from './ActionToolbar';
-import { useCorrelations, CorrelationResponse } from '../../hooks/useCorrelations';
+import { useCorrelations, CorrelationResponse, FilterRule } from '../../hooks/useCorrelations';
 import { useDataContext } from '../../context/DataContext';
 
 
@@ -30,11 +30,7 @@ const getCorrelationColor = (r: number | null): string => {
 
 type CorrelationMethod = 'comparar_todos' | 'pearson' | 'spearman' | 'kendall';
 
-interface FilterRule {
-  variable: string;
-  operator: '=' | '≠' | '>' | '<' | '≥' | '≤';
-  value: number;
-}
+// FilterRule interface is now imported from the hook
 
 export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   // Context and hooks
@@ -76,11 +72,16 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
         ? ['pearson', 'spearman', 'kendall']
         : [method];
 
+      // Prepare filters only if active
+      const activeFilters = filterActive ? filterRules : [];
+
       calculateCorrelations(
         sessionId,
         selectedVars,
         methods,
-        segmentBy || null
+        segmentBy || null,
+        activeFilters,  // Pass filters
+        filterLogic     // Pass filter logic
       ).then((result) => {
         if (result && method === 'comparar_todos') {
           setActiveMethodTab('pearson');
@@ -89,7 +90,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [selectedVarsKey, method, segmentBy, sessionId, calculateCorrelations]);
+  }, [selectedVarsKey, method, segmentBy, sessionId, calculateCorrelations, filterActive, filterRules, filterLogic]);
 
   // Fetch columns from context when component mounts (if empty)
   const { refreshData } = useDataContext();
@@ -134,7 +135,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   };
 
   const addFilterRule = () => {
-    setFilterRules([...filterRules, { variable: numericVariables[0], operator: '>', value: 0 }]);
+    setFilterRules([...filterRules, { column: numericVariables[0], operator: '>', value: 0 }]);
   };
 
   const removeLastRule = () => {
@@ -542,8 +543,8 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                   {filterRules.map((rule, index) => (
                     <div key={index} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200">
                       <select
-                        value={rule.variable}
-                        onChange={(e) => updateRule(index, 'variable', e.target.value)}
+                        value={rule.column}
+                        onChange={(e) => updateRule(index, 'column', e.target.value)}
                         className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                         style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                       >

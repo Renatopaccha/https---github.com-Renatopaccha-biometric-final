@@ -487,11 +487,19 @@ async def calculate_correlations_endpoint(request: CorrelationRequest) -> Correl
     try:
         from app.internal.stats.core import calculate_correlations
         
+        # Convert FilterRule objects to dicts for core function
+        filters_dict = [
+            {"column": f.column, "operator": f.operator, "value": f.value}
+            for f in request.filters
+        ] if request.filters else []
+        
         result = calculate_correlations(
             df=df,
             columns=request.columns,
             methods=request.methods,
-            group_by=request.group_by
+            group_by=request.group_by,
+            filters=filters_dict,
+            filter_logic=request.filter_logic
         )
     except ValueError as e:
         raise HTTPException(

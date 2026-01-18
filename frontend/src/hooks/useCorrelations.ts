@@ -16,6 +16,12 @@ interface CorrelationMatrixResult {
     matrix: { [var1: string]: { [var2: string]: CorrelationPairData } };
 }
 
+export interface FilterRule {
+    column: string;
+    operator: '=' | '≠' | '>' | '<' | '≥' | '≤';
+    value: number;
+}
+
 export interface CorrelationResponse {
     success: boolean;
     message: string;
@@ -31,6 +37,8 @@ export interface CorrelationRequest {
     columns: string[];
     methods: string[];
     group_by?: string | null;
+    filters?: FilterRule[];
+    filter_logic?: 'AND' | 'OR';
 }
 
 export const useCorrelations = () => {
@@ -44,7 +52,9 @@ export const useCorrelations = () => {
         sessionId: string,
         columns: string[],
         methods: string[],
-        groupBy?: string | null
+        groupBy?: string | null,
+        filters?: FilterRule[],
+        filterLogic?: 'AND' | 'OR'
     ): Promise<CorrelationResponse | null> => {
         if (!sessionId || columns.length < 2) {
             console.warn('[useCorrelations] Invalid parameters:', { sessionId, columnsCount: columns.length });
@@ -70,7 +80,8 @@ export const useCorrelations = () => {
                 session_id: sessionId,
                 columns: columns,
                 methods: methods,
-                group_by: groupBy === 'General' ? null : groupBy
+                group_by: groupBy === 'General' ? null : groupBy,
+                ...(filters && filters.length > 0 && { filters, filter_logic: filterLogic || 'AND' })
             };
 
             console.log('[useCorrelations] 📡 Fetching correlations:', payload);

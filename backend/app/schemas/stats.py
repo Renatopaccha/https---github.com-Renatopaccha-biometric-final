@@ -562,6 +562,31 @@ class CorrelationMatrixResult(BaseModel):
         }
 
 
+class FilterRule(BaseModel):
+    """Regla de filtrado para excluir filas del análisis."""
+    
+    column: str = Field(..., description="Nombre de la columna a filtrar")
+    operator: str = Field(..., description="Operador de comparación: >, <, >=, <=, ==, !=")
+    value: float = Field(..., description="Valor de comparación (numérico)")
+    
+    @validator('operator')
+    def validate_operator(cls, v: str) -> str:
+        """Validar que el operador sea válido."""
+        valid_ops = ['>', '<', '>=', '<=', '==', '=', '!=', '≠', '≥', '≤']
+        if v not in valid_ops:
+            raise ValueError(f"Operador inválido: {v}. Use uno de: {', '.join(valid_ops)}")
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "column": "age",
+                "operator": ">",
+                "value": 30
+            }
+        }
+
+
 class CorrelationRequest(BaseModel):
     """Request para cálculo de correlaciones."""
     
@@ -572,6 +597,14 @@ class CorrelationRequest(BaseModel):
         description="Métodos: 'pearson', 'spearman', 'kendall'"
     )
     group_by: Optional[str] = Field(None, description="Variable para segmentar resultados")
+    filters: List[FilterRule] = Field(default=[], description="Reglas de filtrado opcionales")
+    filter_logic: str = Field(default='AND', description="Lógica de combinación: 'AND' o 'OR'")
+    
+    @validator('filter_logic')
+    def validate_filter_logic(cls, v: str) -> str:
+        if v.upper() not in ['AND', 'OR']:
+            raise ValueError("filter_logic debe ser 'AND' o 'OR'")
+        return v.upper()
     
     @validator('session_id')
     def validate_session_id(cls, v: str) -> str:
@@ -599,7 +632,12 @@ class CorrelationRequest(BaseModel):
                 "session_id": "550e8400-e29b-41d4-a716-446655440000",
                 "columns": ["age", "bmi", "glucose"],
                 "methods": ["pearson", "spearman"],
-                "group_by": "gender"
+                "group_by": "gender",
+                "filters": [
+                    {"column": "age", "operator": ">", "value": 30},
+                    {"column": "bmi", "operator": "<", "value": 35}
+                ],
+                "filter_logic": "AND"
             }
         }
 

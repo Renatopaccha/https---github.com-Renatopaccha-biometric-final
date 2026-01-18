@@ -1381,11 +1381,154 @@ def interpret_crosstab(raw_df: pd.DataFrame,
     return f"{desc} {inf}"
 
 
+def _apply_filters(
+    df: pd.DataFrame,
+    filters: Optional[List[Dict[str, Any]]] = None,
+    logic: str = 'AND'
+) -> pd.DataFrame:
+    """
+    Aplica filtros condicionales a un DataFrame para excluir filas antes del análisis.
+    
+    Args:
+        df: DataFrame de pandas a filtrar.
+        filters: Lista de diccionarios con estructura:
+                 [{"column": "edad", "operator": ">", "value": 30}, ...]
+                 Operadores válidos: '>', '<', '>=', '<=', '==', '!='
+        logic: Lógica de combinación: 'AND' (todas las condiciones) o 'OR' (al menos una).
+    
+    Returns:
+        DataFrame filtrado según las condiciones especificadas.
+        
+    Raises:
+        ValueError: Si las columnas no existen o los operadores son inválidos.
+        
+    Examples:
+        >>> # Filtrar edad > 30 Y BMI < 35
+        >>> filters = [
+        ...     {"column": "edad", "operator": ">", "value": 30},
+        ...     {"column": "bmi", "operator": "<", "value": 35}
+        ... ]
+        >>> df_filtered = _apply_filters(df, filters, logic='AND')
+    """
+    # Si no hay filtros, retornar el DataFrame original
+    if not filters or len(filters) == 0:
+        return df
+    
+    # Mapeo de operadores Unicode a Python
+    operator_map = {
+        '>': '>',
+        '<': '<',
+        '>=': '>=',
+        '<=': '<=',
+        '==': '==',
+        '=': '==',   # Normalizar = a ==
+        '!=': '!=',
+        '≠': '!=',   # Unicode not equal
+        '≥': '>=',   # Unicode greater or equal
+        '≤': '<=',   # Unicode less or equal
+    }
+    
+    # Validar operadores
+    valid_operators = list(operator_map.keys())
+    
+    # Lista para acumular máscaras booleanas
+    masks = []
+    
+    for i, filter_rule in enumerate(filters):
+        # Extraer campos del filtro
+        column = filter_rule.get('column')
+        operator = filter_rule.get('operator')
+        value = filter_rule.get('value')
+        
+        # Validación 1: Columna existe
+        if column not in df.columns:
+            raise ValueError(f"Filtro #{i+1}: Columna '{column}' no encontrada en el dataset")
+        
+        # Validación 2: Operador válido
+        if operator not in valid_operators:
+            raise ValueError(
+                f"Filtro #{i+1}: Operador '{operator}' inválido. "
+                f"Use uno de: {', '.join(valid_operators)}"
+            )
+        
+        # Normalizar operador (Unicode a Python)
+        normalized_op = operator_map[operator]
+        
+        # Validación 3: Convertir valor a numérico si es posible
+        try:
+            # Intentar conversión numérica para comparaciones
+            numeric_value = pd.to_numeric([value])[0]
+        except (ValueError, TypeError):
+            # Si falla, usar valor original (para comparaciones de strings)
+            numeric_value = value
+        
+        # Construir máscara booleana según operador
+        try:
+            col_data = df[column]
+            
+            # Convertir columna a numérica si es necesario (coerce errors a NaN)
+            if not pd.api.types.is_numeric_dtype(col_data):
+                col_data = pd.to_numeric(col_data, errors='coerce')
+            
+            if normalized_op == '>':
+                mask = col_data > numeric_value
+            elif normalized_op == '<':
+                mask = col_data < numeric_value
+            elif normalized_op == '>=':
+                mask = col_data >= numeric_value
+            elif normalized_op == '<=':
+                mask = col_data <= numeric_value
+            elif normalized_op == '==':
+                mask = col_data == numeric_value
+            elif normalized_op == '!=':
+                mask = col_data != numeric_value
+            else:
+                raise ValueError(f"Operador '{normalized_op}' no implementado")
+            
+            masks.append(mask)
+            
+        except Exception as e:
+            raise ValueError(
+                f"Filtro #{i+1}: Error al aplicar condición '{column} {operator} {value}': {str(e)}"
+            )
+    
+    # Combinar máscaras según lógica especificada
+    if len(masks) == 0:
+        return df
+    
+    if logic.upper() == 'AND':
+        # Todas las condiciones deben cumplirse
+        combined_mask = masks[0]
+        for mask in masks[1:]:
+            combined_mask = combined_mask & mask
+    elif logic.upper() == 'OR':
+        # Al menos una condición debe cumplirse
+        combined_mask = masks[0]
+        for mask in masks[1:]:
+            combined_mask = combined_mask | mask
+    else:
+        raise ValueError(f"Lógica '{logic}' inválida. Use 'AND' o 'OR'")
+    
+    # Aplicar filtro
+    df_filtered = df[combined_mask].copy()
+    
+    # Validar que quedaron datos suficientes
+    if len(df_filtered) < 3:
+        raise ValueError(
+            f"Los filtros aplicados dejaron muy pocas filas ({len(df_filtered)}). "
+            f"Se requieren al menos 3 observaciones para correlaciones."
+        )
+    
+    return df_filtered
+
+
 def calculate_correlations(
     df: pd.DataFrame,
     columns: List[str],
     methods: Optional[List[str]] = None,
-    group_by: Optional[str] = None
+    group_by: Optional[str] = None,
+    filters: Optional[List[Dict[str, Any]]] = None,
+    filter_logic: str = 'AND'
 ) -> Dict[str, Any]:
     """
     Calcula matrices de correlación para variables numéricas con múltiples métodos.
@@ -1396,6 +1539,9 @@ def calculate_correlations(
         methods: Lista de métodos a usar: 'pearson', 'spearman', 'kendall'.
                  Por defecto: ['pearson'].
         group_by: Opcional. Nombre de columna categórica para segmentar resultados.
+        filters: Opcional. Lista de filtros a aplicar antes del cálculo:
+                 [{"column": "edad", "operator": ">", "value": 30}, ...]
+        filter_logic: Lógica de combinación de filtros: 'AND' o 'OR' (default: 'AND').
     
     Returns:
         Diccionario con estructura:
@@ -1418,7 +1564,9 @@ def calculate_correlations(
         ...     df, 
         ...     columns=['age', 'bmi', 'glucose'],
         ...     methods=['pearson', 'spearman'],
-        ...     group_by='gender'
+        ...     group_by='gender',
+        ...     filters=[{"column": "age", "operator": ">", "value": 30}],
+        ...     filter_logic='AND'
         ... )
         >>> pearson_male = result['pearson']['Male']
         >>> r_age_bmi = pearson_male['matrix'][0][1]  # Correlación edad-IMC
@@ -1452,7 +1600,12 @@ def calculate_correlations(
         if method not in valid_methods:
             raise ValueError(f"Método inválido: {method}. Use: {', '.join(valid_methods)}")
     
-    # 2. Convertir columnas a numéricas y validar
+    # 2. APLICAR FILTROS (NUEVO) - Antes de convertir a numérico
+    # Aplicar filtros al DataFrame completo antes de cualquier procesamiento
+    if filters and len(filters) > 0:
+        df = _apply_filters(df, filters, filter_logic)
+    
+    # 3. Convertir columnas a numéricas y validar
     # Usar solo numéricas para evitar errores en .corr()
     numeric_df = df[columns].apply(pd.to_numeric, errors='coerce')
     
@@ -1461,7 +1614,7 @@ def calculate_correlations(
     if len(valid_data) < 3:
         raise ValueError("Datos insuficientes: se requieren al menos 3 observaciones válidas")
     
-    # 3. Determinar segmentos
+    # 4. Determinar segmentos
     segments = {"General": numeric_df}
     if group_by:
         if group_by not in df.columns:
@@ -1475,7 +1628,7 @@ def calculate_correlations(
             mask = df[group_by] == group_value
             segments[str(group_value)] = numeric_df.loc[mask]
     
-    # 4. Calcular correlaciones para cada método y segmento
+    # 5. Calcular correlaciones para cada método y segmento
     results = {}
     
     for method in methods:
