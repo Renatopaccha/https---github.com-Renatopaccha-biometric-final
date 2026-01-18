@@ -1,5 +1,5 @@
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
-import { ChatSession } from '../api/ai';
+import { ChatSession } from '../../api/ai';
 
 interface ChatSidebarProps {
   sessions: ChatSession[];
@@ -83,8 +83,8 @@ export function ChatSidebar({
                 key={session.id}
                 onClick={() => onSelectChat(session.id)}
                 className={`group relative px-3 py-3 rounded-lg cursor-pointer transition-all ${activeChatId === session.id
-                    ? 'bg-teal-50 border border-teal-200'
-                    : 'hover:bg-slate-50 border border-transparent'
+                  ? 'bg-teal-50 border border-teal-200'
+                  : 'hover:bg-slate-50 border border-transparent'
                   }`}
               >
                 <div className="flex items-start gap-2">
