@@ -135,7 +135,10 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   };
 
   const addFilterRule = () => {
-    setFilterRules([...filterRules, { column: numericVariables[0], operator: '>', value: 0 }]);
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : Date.now().toString();
+    setFilterRules([...filterRules, { id, column: numericVariables[0], operator: '>', value: 0 }]);
   };
 
   const removeLastRule = () => {
@@ -148,10 +151,8 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
     setFilterRules([]);
   };
 
-  const updateRule = (index: number, field: keyof FilterRule, value: any) => {
-    const newRules = [...filterRules];
-    newRules[index] = { ...newRules[index], [field]: value };
-    setFilterRules(newRules);
+  const updateRule = (id: string, field: keyof FilterRule, value: any) => {
+    setFilterRules(prevRules => prevRules.map(rule => (rule.id === id ? { ...rule, [field]: value } : rule)));
   };
 
   const getSignificance = (p: number): string => {
@@ -540,11 +541,11 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
                 {/* Filter Rules */}
                 <div className="space-y-2 mb-3">
-                  {filterRules.map((rule, index) => (
-                    <div key={index} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200">
+                  {filterRules.map((rule) => (
+                    <div key={rule.id} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200">
                       <select
                         value={rule.column}
-                        onChange={(e) => updateRule(index, 'column', e.target.value)}
+                        onChange={(e) => updateRule(rule.id, 'column', e.target.value)}
                         className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                         style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                       >
@@ -555,7 +556,7 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
 
                       <select
                         value={rule.operator}
-                        onChange={(e) => updateRule(index, 'operator', e.target.value as any)}
+                        onChange={(e) => updateRule(rule.id, 'operator', e.target.value as any)}
                         className="w-16 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                         style={{ fontFamily: 'JetBrains Mono, Roboto Mono, monospace' }}
                       >
@@ -571,20 +572,20 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
                         <input
                           type="number"
                           value={rule.value}
-                          onChange={(e) => updateRule(index, 'value', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => updateRule(rule.id, 'value', parseFloat(e.target.value) || 0)}
                           className="w-24 px-2 py-1.5 bg-white border border-slate-300 rounded-l text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                           style={{ fontFamily: 'JetBrains Mono, Roboto Mono, monospace' }}
                           step="0.01"
                         />
                         <div className="flex flex-col border border-l-0 border-slate-300 rounded-r overflow-hidden">
                           <button
-                            onClick={() => updateRule(index, 'value', rule.value + 1)}
+                            onClick={() => updateRule(rule.id, 'value', rule.value + 1)}
                             className="px-1 py-0 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs leading-none"
                           >
                             +
                           </button>
                           <button
-                            onClick={() => updateRule(index, 'value', rule.value - 1)}
+                            onClick={() => updateRule(rule.id, 'value', rule.value - 1)}
                             className="px-1 py-0 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs leading-none border-t border-slate-300"
                           >
                             −
