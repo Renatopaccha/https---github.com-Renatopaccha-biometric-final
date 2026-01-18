@@ -26,6 +26,13 @@ Pillow==10.4.0
 redis==5.0.8
 pyarrow==17.0.0
 
+# Testing Dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-timeout==2.2.0
+pytest-asyncio==0.23.2
+psutil==5.9.6
+
 # TODO: Add when implementing authentication
 # python-jose[cryptography]==3.3.0
 # passlib[bcrypt]==1.7.4
