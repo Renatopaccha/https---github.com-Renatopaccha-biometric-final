@@ -1,5 +1,6 @@
 import { ArrowLeft, ChevronDown, Plus, Trash2, Filter, ChevronRight, Play } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx-js-style';
 import { ActionToolbar } from './ActionToolbar';
 import { useCorrelations, CorrelationResponse, FilterRule } from '../../hooks/useCorrelations';
 import { useDataContext } from '../../context/DataContext';
@@ -86,6 +87,64 @@ const getCorrelationClassification = (r: number | null): { label: string; tone: 
 };
 
 type CorrelationMethod = 'comparar_todos' | 'pearson' | 'spearman' | 'kendall';
+
+// Excel styles for correlation matrix - academic look
+const excelStyles = {
+  header: {
+    fill: { fgColor: { rgb: "F2F2F2" } },
+    font: { bold: true, color: { rgb: "444746" }, sz: 11 },
+    border: {
+      top: { style: "thin", color: { rgb: "D1D5DB" } },
+      bottom: { style: "medium", color: { rgb: "9CA3AF" } },
+      left: { style: "thin", color: { rgb: "D1D5DB" } },
+      right: { style: "thin", color: { rgb: "D1D5DB" } }
+    },
+    alignment: { horizontal: "center", vertical: "center" }
+  },
+  diagonal: {
+    fill: { fgColor: { rgb: "EBF8FF" } }, // Light blue for diagonal
+    font: { bold: true, color: { rgb: "2563EB" }, sz: 10 },
+    border: {
+      top: { style: "thin", color: { rgb: "D1D5DB" } },
+      bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+      left: { style: "thin", color: { rgb: "D1D5DB" } },
+      right: { style: "thin", color: { rgb: "D1D5DB" } }
+    },
+    alignment: { horizontal: "center", vertical: "center" }
+  },
+  strong: {
+    fill: { fgColor: { rgb: "DBEAFE" } }, // Soft blue for strong correlations
+    font: { bold: true, color: { rgb: "1D4ED8" }, sz: 10 },
+    border: {
+      top: { style: "thin", color: { rgb: "D1D5DB" } },
+      bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+      left: { style: "thin", color: { rgb: "D1D5DB" } },
+      right: { style: "thin", color: { rgb: "D1D5DB" } }
+    },
+    alignment: { horizontal: "center", vertical: "center" }
+  },
+  cell: {
+    font: { sz: 10, color: { rgb: "374151" } },
+    border: {
+      top: { style: "thin", color: { rgb: "E5E7EB" } },
+      bottom: { style: "thin", color: { rgb: "E5E7EB" } },
+      left: { style: "thin", color: { rgb: "E5E7EB" } },
+      right: { style: "thin", color: { rgb: "E5E7EB" } }
+    },
+    alignment: { horizontal: "center", vertical: "center" }
+  },
+  variableLabel: {
+    fill: { fgColor: { rgb: "F8FAFC" } },
+    font: { bold: true, color: { rgb: "1E293B" }, sz: 10 },
+    border: {
+      top: { style: "thin", color: { rgb: "D1D5DB" } },
+      bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+      left: { style: "thin", color: { rgb: "D1D5DB" } },
+      right: { style: "thin", color: { rgb: "D1D5DB" } }
+    },
+    alignment: { horizontal: "left", vertical: "center" }
+  }
+};
 
 // FilterRule interface is now imported from the hook
 
@@ -377,6 +436,275 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
       </tr>
     ));
   };
+
+  // =====================================================
+  // EXPORT FUNCTIONS
+  // =====================================================
+
+  // Export to Excel with academic styling
+  const handleExportExcel = () => {
+    if (!correlationData || selectedVars.length < 2) {
+      alert('No hay datos de correlación para exportar. Selecciona al menos 2 variables.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    const methodsToExport = method === 'comparar_todos'
+      ? ['pearson', 'spearman', 'kendall'] as const
+      : [method as 'pearson' | 'spearman' | 'kendall'];
+
+    const methodNames: Record<string, string> = {
+      pearson: 'Pearson (r)',
+      spearman: 'Spearman (ρ)',
+      kendall: 'Kendall (τ)'
+    };
+
+    for (const currentMethod of methodsToExport) {
+      const ws: XLSX.WorkSheet = {};
+      let rowNum = 0;
+
+      // Get matrix data for current segment and method
+      const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+
+      if (!matrixData) continue;
+
+      // Title row
+      const titleCellRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
+      ws[titleCellRef] = {
+        v: `Matriz de Correlación - ${methodNames[currentMethod]}`,
+        t: 's',
+        s: { font: { bold: true, sz: 14 }, alignment: { horizontal: 'left' } }
+      };
+      rowNum += 2;
+
+      // Header row (empty cell + variable names)
+      const headerCellRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
+      ws[headerCellRef] = { v: 'Variable', t: 's', s: excelStyles.header };
+
+      selectedVars.forEach((variable, colIdx) => {
+        const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 });
+        ws[cellRef] = { v: variable, t: 's', s: excelStyles.header };
+      });
+      rowNum++;
+
+      // Data rows
+      for (const rowVar of selectedVars) {
+        // Variable name in first column
+        const labelCellRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
+        ws[labelCellRef] = { v: rowVar, t: 's', s: excelStyles.variableLabel };
+
+        // Correlation values
+        selectedVars.forEach((colVar, colIdx) => {
+          const pairData = matrixData[rowVar]?.[colVar];
+          const isDiagonal = rowVar === colVar;
+          const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 });
+
+          const value = pairData?.r !== null && pairData?.r !== undefined
+            ? pairData.r.toFixed(3)
+            : '—';
+
+          // Apply conditional styling
+          let cellStyle = excelStyles.cell;
+          if (isDiagonal) {
+            cellStyle = excelStyles.diagonal;
+          } else if (pairData?.r !== null && Math.abs(pairData.r) >= 0.7) {
+            cellStyle = excelStyles.strong;
+          }
+
+          ws[cellRef] = {
+            v: pairData?.r !== null ? pairData.r : '',
+            t: pairData?.r !== null ? 'n' : 's',
+            s: cellStyle,
+            z: '0.000' // Number format
+          };
+        });
+
+        rowNum++;
+      }
+
+      // Add significance legend
+      rowNum += 2;
+      const legendRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
+      ws[legendRef] = {
+        v: 'Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001',
+        t: 's',
+        s: { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } }
+      };
+
+      // Set range
+      ws['!ref'] = XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: { r: rowNum, c: selectedVars.length }
+      });
+
+      // Column widths
+      ws['!cols'] = [
+        { wch: 20 }, // Variable names column
+        ...selectedVars.map(() => ({ wch: 12 }))
+      ];
+
+      // Add sheet to workbook
+      const sheetName = method === 'comparar_todos'
+        ? methodNames[currentMethod].substring(0, 31)
+        : 'Correlaciones';
+
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    }
+
+    // Generate filename
+    const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : methodNames[method as keyof typeof methodNames]}${segmentBy ? `_${activeSegmentTab}` : ''}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  };
+
+  // Export to PDF with professional formatting
+  const handleExportPDF = async () => {
+    if (!correlationData || selectedVars.length < 2) {
+      alert('No hay datos de correlación para exportar. Selecciona al menos 2 variables.');
+      return;
+    }
+
+    // Dynamic imports
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF({ orientation: selectedVars.length > 5 ? 'landscape' : 'portrait' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let yPos = 20;
+
+    // Title
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Reporte de Correlaciones', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
+
+    // Metadata
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 5;
+    doc.text(`Variables: ${selectedVars.join(', ')}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 5;
+
+    if (segmentBy) {
+      doc.text(`Segmento activo: ${activeSegmentTab}`, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 5;
+    }
+    yPos += 10;
+
+    // Methods to export
+    const methodsToExport = method === 'comparar_todos'
+      ? ['pearson', 'spearman', 'kendall'] as const
+      : [method as 'pearson' | 'spearman' | 'kendall'];
+
+    const methodNames: Record<string, string> = {
+      pearson: 'Correlación de Pearson (r)',
+      spearman: 'Correlación de Spearman (ρ)',
+      kendall: 'Correlación de Kendall (τ)'
+    };
+
+    for (const currentMethod of methodsToExport) {
+      const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+
+      if (!matrixData) continue;
+
+      // Method title
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(methodNames[currentMethod], 14, yPos);
+      yPos += 8;
+
+      // Build table data
+      const tableHead = ['Variable', ...selectedVars];
+      const tableBody: string[][] = [];
+
+      for (const rowVar of selectedVars) {
+        const row: string[] = [rowVar];
+
+        for (const colVar of selectedVars) {
+          const pairData = matrixData[rowVar]?.[colVar];
+          const significance = pairData?.p_value !== null && pairData?.p_value !== undefined
+            ? getSignificance(pairData.p_value)
+            : '';
+
+          const value = pairData?.r !== null && pairData?.r !== undefined
+            ? `${pairData.r.toFixed(3)}${significance}`
+            : '—';
+
+          row.push(value);
+        }
+
+        tableBody.push(row);
+      }
+
+      // Generate table
+      autoTable(doc, {
+        startY: yPos,
+        head: [tableHead],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [242, 242, 242],
+          textColor: [68, 71, 70],
+          lineColor: [209, 213, 219],
+          lineWidth: 0.1,
+          fontStyle: 'bold',
+          fontSize: 8,
+          halign: 'center'
+        },
+        bodyStyles: {
+          lineColor: [209, 213, 219],
+          lineWidth: 0.1,
+          textColor: [55, 65, 81],
+          fontSize: 8,
+          halign: 'center'
+        },
+        columnStyles: {
+          0: { halign: 'left', fontStyle: 'bold' } // Variable column
+        },
+        margin: { left: 14, right: 14 },
+        styles: { cellPadding: 2 },
+        didParseCell: (data) => {
+          // Highlight diagonal cells
+          if (data.section === 'body' && data.column.index === data.row.index + 1) {
+            data.cell.styles.fillColor = [235, 248, 255]; // Light blue
+            data.cell.styles.textColor = [37, 99, 235];
+            data.cell.styles.fontStyle = 'bold';
+          }
+
+          // Highlight strong correlations
+          if (data.section === 'body' && data.column.index > 0) {
+            const cellValue = String(data.cell.raw || '');
+            const numValue = parseFloat(cellValue.replace(/[*]/g, ''));
+            if (!isNaN(numValue) && Math.abs(numValue) >= 0.7 && data.column.index !== data.row.index + 1) {
+              data.cell.styles.fillColor = [219, 234, 254]; // Soft blue
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+
+      // New page if needed
+      if (yPos > doc.internal.pageSize.getHeight() - 40 && currentMethod !== methodsToExport[methodsToExport.length - 1]) {
+        doc.addPage();
+        yPos = 20;
+      }
+    }
+
+    // Footer legend
+    if (yPos < doc.internal.pageSize.getHeight() - 30) {
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001', 14, yPos + 5);
+    }
+
+    // Save PDF
+    const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.pdf`;
+    doc.save(filename);
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-50">
       {/* Header */}
@@ -923,7 +1251,10 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
               </div>
             </div>
 
-            <ActionToolbar />
+            <ActionToolbar
+              onExportExcel={handleExportExcel}
+              onExportPDF={handleExportPDF}
+            />
           </div>
         </div>
       </div>
