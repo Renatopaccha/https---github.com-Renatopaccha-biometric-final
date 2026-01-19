@@ -174,6 +174,75 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
     XLSX.writeFile(workbook, 'Resumen_Estadistico.xlsx');
   };
 
+  // Exportar a PDF
+  const handleExportPDF = async () => {
+    if (data.length === 0) return;
+
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let yPos = 20;
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Resumen Estadístico', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 10;
+
+    const tableData = data.map((row) => {
+      const completeness = totalRows > 0 ? `${((row.n / totalRows) * 100).toFixed(1)}%` : '-';
+      const distribution = row.is_binary
+        ? 'N/A'
+        : row.is_normal === null
+          ? 'N/A'
+          : row.is_normal
+            ? 'Normal'
+            : 'Asimétrica';
+
+      return [
+        row.variable,
+        completeness,
+        distribution,
+        row.n.toString(),
+        row.is_binary ? formatPrevalence(row.media) : formatNumber(row.media),
+        row.is_binary ? '-' : formatNumber(row.mediana),
+        row.is_binary ? '-' : formatNumber(row.desvio_estandar),
+        row.is_binary ? '-' : formatNumber(row.minimo),
+        row.is_binary ? '-' : formatNumber(row.maximo)
+      ];
+    });
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Variable', 'Completitud', 'Distribución', 'N', 'Media', 'Mediana', 'Desv. Estándar', 'Mín', 'Máx']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [243, 244, 246],
+        textColor: [31, 41, 55],
+        lineColor: [209, 213, 219],
+        lineWidth: 0.1,
+        fontStyle: 'bold'
+      },
+      bodyStyles: {
+        lineColor: [209, 213, 219],
+        lineWidth: 0.1,
+        textColor: [55, 65, 81]
+      },
+      alternateRowStyles: { fillColor: [255, 255, 255] },
+      margin: { left: 14, right: 14 },
+      styles: { fontSize: 8, cellPadding: 2 }
+    });
+
+    doc.save('Resumen_Estadistico.pdf');
+  };
+
   const handleAIInterpretation = async () => {
     if (analysisResult || isAnalyzing) return; // Ya existe o está cargando
 
@@ -470,6 +539,7 @@ El usuario ha sido transferido al chat principal. Mantén este contexto en memor
 
             <ActionToolbar
               onExportExcel={handleExportExcel}
+              onExportPDF={handleExportPDF}
               onAIInterpretation={handleAIInterpretation}
               onContinueToChat={handleContinueToChat}
               isAnalyzing={isAnalyzing}
