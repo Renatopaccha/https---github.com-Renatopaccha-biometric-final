@@ -30,8 +30,8 @@ class RedisClient:
     """
 
     _instance: Optional["RedisClient"] = None
-    _pool: Optional[ConnectionPool] = None
-    _client: Optional["redis.Redis"] = None
+    _pool = None  # Type: Optional[ConnectionPool] when redis is available
+    _client = None  # Type: Optional[redis.Redis] when redis is available
 
     def __new__(cls) -> "RedisClient":
         if cls._instance is None:

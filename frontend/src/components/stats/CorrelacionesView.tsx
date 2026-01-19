@@ -633,184 +633,244 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
   // EXPORT FUNCTIONS
   // =====================================================
 
-  // Export to Excel with academic styling matching the app UI
+  // Export to Excel with academic styling (same pattern as TablasFrecuenciaView)
   const handleExportExcel = () => {
-    if (!correlationData || selectedVars.length < 2) {
-      alert('No hay datos de correlación para exportar. Selecciona al menos 2 variables.');
+    // Validation
+    if (!correlationData) {
+      alert('No hay datos de correlación disponibles.');
+      console.error('handleExportExcel: correlationData is null/undefined');
+      return;
+    }
+
+    if (selectedVars.length < 2) {
+      alert('Selecciona al menos 2 variables para exportar.');
       return;
     }
 
     try {
-      const wb = XLSX.utils.book_new();
-      const methodsToExport = method === 'comparar_todos'
-        ? ['pearson', 'spearman', 'kendall'] as const
-        : [method as 'pearson' | 'spearman' | 'kendall'];
+      console.log('Starting Excel export...');
+      console.log('Method:', method);
+      console.log('Active Segment:', activeSegmentTab);
+      console.log('Selected Variables:', selectedVars);
 
-      const methodLabelsMap: Record<string, string> = {
-        pearson: 'Pearson (r)',
-        spearman: 'Spearman (ρ)',
-        kendall: 'Kendall (τ)'
+      const wb = XLSX.utils.book_new();
+
+      // Determine which methods to export
+      const methodsToExport: Array<'pearson' | 'spearman' | 'kendall'> =
+        method === 'comparar_todos'
+          ? ['pearson', 'spearman', 'kendall']
+          : [method as 'pearson' | 'spearman' | 'kendall'];
+
+      const methodLabels: Record<string, string> = {
+        pearson: 'Pearson',
+        spearman: 'Spearman',
+        kendall: 'Kendall'
       };
 
+      let sheetsCreated = 0;
+
       for (const currentMethod of methodsToExport) {
-        const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
-        if (!matrixData) continue;
+        // Safely access matrix data
+        const segmentData = correlationData?.tables?.[activeSegmentTab];
+        const methodData = segmentData?.[currentMethod];
+        const matrixData = methodData?.matrix;
 
-        // Build the data array for the sheet
-        const sheetData: any[][] = [];
+        console.log(`Processing ${currentMethod}:`, { segmentData: !!segmentData, methodData: !!methodData, matrixData: !!matrixData });
 
-        // Title row
-        sheetData.push([`Matriz de Correlación - ${methodLabelsMap[currentMethod]}`]);
-        sheetData.push([`Segmento: ${activeSegmentTab} | Fecha: ${new Date().toLocaleDateString('es-ES')}`]);
-        sheetData.push([]); // Empty row
+        if (!matrixData) {
+          console.warn(`No matrix data for ${currentMethod} in segment ${activeSegmentTab}`);
+          continue;
+        }
 
-        // Header row: empty cell + variable names
-        const headerRow = ['Variable', ...selectedVars];
-        sheetData.push(headerRow);
+        // Create worksheet using cell-by-cell construction (more reliable for styles)
+        const ws: XLSX.WorkSheet = {};
+        let rowNum = 0;
+        const numCols = selectedVars.length + 1; // Variable column + data columns
+
+        // Row 0: Title
+        ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
+          v: `Matriz de Correlación - ${methodLabels[currentMethod]}`,
+          t: 's',
+          s: { font: { bold: true, sz: 14, color: { rgb: "1E293B" } } }
+        };
+        rowNum++;
+
+        // Row 1: Metadata
+        ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
+          v: `Segmento: ${activeSegmentTab} | Fecha: ${new Date().toLocaleDateString('es-ES')}`,
+          t: 's',
+          s: { font: { italic: true, sz: 10, color: { rgb: "64748B" } } }
+        };
+        rowNum++;
+
+        // Row 2: Empty
+        rowNum++;
+
+        // Row 3: Header row
+        ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
+          v: 'Variable',
+          t: 's',
+          s: excelStyles.header
+        };
+
+        selectedVars.forEach((variable, colIdx) => {
+          ws[XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 })] = {
+            v: variable,
+            t: 's',
+            s: excelStyles.header
+          };
+        });
+        rowNum++;
 
         // Data rows
-        for (const rowVar of selectedVars) {
-          const dataRow: (string | number)[] = [rowVar];
+        for (let rowIdx = 0; rowIdx < selectedVars.length; rowIdx++) {
+          const rowVar = selectedVars[rowIdx];
 
-          for (const colVar of selectedVars) {
-            const pairData = matrixData[rowVar]?.[colVar];
-            const isDiagonal = rowVar === colVar;
+          // First column: Variable name
+          ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
+            v: rowVar,
+            t: 's',
+            s: excelStyles.variableLabel
+          };
 
-            if (!pairData || pairData.r === null || pairData.r === undefined) {
-              dataRow.push('—');
+          // Data columns
+          for (let colIdx = 0; colIdx < selectedVars.length; colIdx++) {
+            const colVar = selectedVars[colIdx];
+            const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 });
+            const isDiagonal = rowIdx === colIdx;
+
+            // Safely get pair data
+            const pairData = matrixData?.[rowVar]?.[colVar];
+
+            if (isDiagonal) {
+              // Diagonal cell - always 1.000
+              ws[cellRef] = {
+                v: 1,
+                t: 'n',
+                z: '0.000',
+                s: excelStyles.diagonal
+              };
+            } else if (!pairData || pairData.r === null || pairData.r === undefined) {
+              // Missing data
+              ws[cellRef] = {
+                v: '—',
+                t: 's',
+                s: excelStyles.cell
+              };
             } else {
-              // For diagonal, show 1.000
-              if (isDiagonal) {
-                dataRow.push('1.000');
-              } else {
-                // Show coefficient with significance stars
-                const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
-                dataRow.push(`${pairData.r.toFixed(3)}${significance}`);
+              // Normal correlation value
+              const r = pairData.r;
+              const significance = pairData.p_value !== null && pairData.p_value !== undefined
+                ? getSignificance(pairData.p_value)
+                : '';
+              const isStrong = Math.abs(r) >= 0.7;
+
+              ws[cellRef] = {
+                v: r,
+                t: 'n',
+                z: '0.000',
+                s: isStrong ? excelStyles.strong : excelStyles.cell
+              };
+
+              // Add significance stars as separate text if needed
+              if (significance) {
+                ws[cellRef].v = `${r.toFixed(3)}${significance}`;
+                ws[cellRef].t = 's';
               }
             }
           }
-          sheetData.push(dataRow);
+          rowNum++;
         }
 
-        // Empty row and legend
-        sheetData.push([]);
-        sheetData.push(['Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001']);
-        sheetData.push([`N = ${correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix?.[selectedVars[0]]?.[selectedVars[0]]?.n || 'N/A'} pares`]);
+        // Empty row
+        rowNum++;
 
-        // Create worksheet from array
-        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+        // Legend row
+        ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
+          v: 'Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001',
+          t: 's',
+          s: { font: { italic: true, sz: 9, color: { rgb: "6B7280" } } }
+        };
+        rowNum++;
 
-        // Apply column widths
+        // N info row
+        const sampleN = matrixData?.[selectedVars[0]]?.[selectedVars[0]]?.n;
+        ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
+          v: `N = ${sampleN || 'N/A'} observaciones`,
+          t: 's',
+          s: { font: { italic: true, sz: 9, color: { rgb: "6B7280" } } }
+        };
+        rowNum++;
+
+        // Set worksheet range
+        ws['!ref'] = XLSX.utils.encode_range({
+          s: { r: 0, c: 0 },
+          e: { r: rowNum - 1, c: numCols - 1 }
+        });
+
+        // Set column widths
         ws['!cols'] = [
-          { wch: 22 }, // Variable column
+          { wch: 20 }, // Variable column
           ...selectedVars.map(() => ({ wch: 14 }))
         ];
 
-        // Apply styles to cells
-        const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-
-        for (let R = range.s.r; R <= range.e.r; R++) {
-          for (let C = range.s.c; C <= range.e.c; C++) {
-            const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-            const cell = ws[cellRef];
-
-            if (!cell) continue;
-
-            // Title row (row 0)
-            if (R === 0) {
-              cell.s = {
-                font: { bold: true, sz: 14, color: { rgb: "1E293B" } },
-                alignment: { horizontal: 'left' }
-              };
-            }
-            // Subtitle row (row 1)
-            else if (R === 1) {
-              cell.s = {
-                font: { italic: true, sz: 10, color: { rgb: "64748B" } },
-                alignment: { horizontal: 'left' }
-              };
-            }
-            // Header row (row 3)
-            else if (R === 3) {
-              cell.s = excelStyles.header;
-            }
-            // Data rows (rows 4 onwards, before legend)
-            else if (R >= 4 && R < 4 + selectedVars.length) {
-              const dataRowIndex = R - 4;
-              const dataColIndex = C - 1;
-
-              // First column (variable names)
-              if (C === 0) {
-                cell.s = excelStyles.variableLabel;
-              }
-              // Diagonal cells
-              else if (dataRowIndex === dataColIndex) {
-                cell.s = excelStyles.diagonal;
-              }
-              // Strong correlations
-              else if (typeof cell.v === 'string') {
-                const numValue = parseFloat(cell.v.replace(/[*]/g, ''));
-                if (!isNaN(numValue) && Math.abs(numValue) >= 0.7) {
-                  cell.s = excelStyles.strong;
-                } else {
-                  cell.s = excelStyles.cell;
-                }
-              } else {
-                cell.s = excelStyles.cell;
-              }
-            }
-            // Legend rows
-            else if (R >= 4 + selectedVars.length + 1) {
-              cell.s = {
-                font: { italic: true, sz: 9, color: { rgb: "6B7280" } },
-                alignment: { horizontal: 'left' }
-              };
-            }
-          }
-        }
-
         // Add sheet to workbook
         const sheetName = method === 'comparar_todos'
-          ? methodLabelsMap[currentMethod].substring(0, 31)
+          ? methodLabels[currentMethod]
           : 'Correlaciones';
 
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
+        sheetsCreated++;
+        console.log(`Sheet "${sheetName}" created successfully`);
       }
 
-      // Generate file using Blob for browser compatibility
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      if (sheetsCreated === 0) {
+        alert('No se pudieron crear hojas. Verifica que los datos estén disponibles.');
+        console.error('No sheets were created - check data availability');
+        return;
+      }
 
-      // Create download link
+      // Generate and download file
       const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.xlsx`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+
+      console.log(`Writing file: ${filename}`);
+      XLSX.writeFile(wb, filename);
+      console.log('Excel export completed successfully');
 
     } catch (error) {
-      console.error('Error exporting Excel:', error);
-      alert('Error al exportar a Excel. Por favor intenta de nuevo.');
+      console.error('Excel export error:', error);
+      alert(`Error al exportar a Excel: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   };
 
-  // Export to PDF with professional formatting matching the app UI
+  // Export to PDF with professional formatting (same pattern as TablasFrecuenciaView)
   const handleExportPDF = async () => {
-    if (!correlationData || selectedVars.length < 2) {
-      alert('No hay datos de correlación para exportar. Selecciona al menos 2 variables.');
+    // Validation
+    if (!correlationData) {
+      alert('No hay datos de correlación disponibles.');
+      console.error('handleExportPDF: correlationData is null/undefined');
+      return;
+    }
+
+    if (selectedVars.length < 2) {
+      alert('Selecciona al menos 2 variables para exportar.');
       return;
     }
 
     try {
+      console.log('Starting PDF export...');
+      console.log('Method:', method);
+      console.log('Active Segment:', activeSegmentTab);
+      console.log('Selected Variables:', selectedVars);
+
       // Dynamic imports
+      console.log('Loading jsPDF and autoTable...');
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
+      console.log('Libraries loaded successfully');
 
-      const doc = new jsPDF({ orientation: selectedVars.length > 5 ? 'landscape' : 'portrait' });
+      const isLandscape = selectedVars.length > 5;
+      const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait' });
       const pageWidth = doc.internal.pageSize.getWidth();
       let yPos = 20;
 
@@ -843,9 +903,10 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
       yPos += 30;
 
       // Methods to export
-      const methodsToExport = method === 'comparar_todos'
-        ? ['pearson', 'spearman', 'kendall'] as const
-        : [method as 'pearson' | 'spearman' | 'kendall'];
+      const methodsToExport: Array<'pearson' | 'spearman' | 'kendall'> =
+        method === 'comparar_todos'
+          ? ['pearson', 'spearman', 'kendall']
+          : [method as 'pearson' | 'spearman' | 'kendall'];
 
       const methodLabels: Record<string, string> = {
         pearson: 'Coeficiente de Pearson (r)',
@@ -853,10 +914,22 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         kendall: 'Coeficiente de Kendall (τ)'
       };
 
-      for (const currentMethod of methodsToExport) {
-        const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+      let tablesCreated = 0;
 
-        if (!matrixData) continue;
+      for (const currentMethod of methodsToExport) {
+        console.log(`Processing method: ${currentMethod}`);
+
+        // Safely access matrix data
+        const segmentData = correlationData?.tables?.[activeSegmentTab];
+        const methodData = segmentData?.[currentMethod];
+        const matrixData = methodData?.matrix;
+
+        console.log(`${currentMethod} data:`, { hasSegment: !!segmentData, hasMethod: !!methodData, hasMatrix: !!matrixData });
+
+        if (!matrixData) {
+          console.warn(`No matrix data for ${currentMethod} in segment ${activeSegmentTab}`);
+          continue;
+        }
 
         // Method title
         doc.setFontSize(11);
@@ -873,7 +946,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           const row: string[] = [rowVar];
 
           for (const colVar of selectedVars) {
-            const pairData = matrixData[rowVar]?.[colVar];
+            const pairData = matrixData?.[rowVar]?.[colVar];
             const isDiagonal = rowVar === colVar;
 
             if (isDiagonal) {
@@ -881,13 +954,17 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
             } else if (!pairData || pairData.r === null || pairData.r === undefined) {
               row.push('—');
             } else {
-              const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
+              const significance = pairData.p_value !== null && pairData.p_value !== undefined
+                ? getSignificance(pairData.p_value)
+                : '';
               row.push(`${pairData.r.toFixed(3)}${significance}`);
             }
           }
 
           tableBody.push(row);
         }
+
+        console.log(`Table for ${currentMethod}:`, { head: tableHead.length, body: tableBody.length });
 
         // Generate table with academic styling
         autoTable(doc, {
@@ -896,7 +973,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           body: tableBody,
           theme: 'grid',
           headStyles: {
-            fillColor: [242, 242, 242], // Gray-100
+            fillColor: [242, 242, 242],
             textColor: [68, 71, 70],
             lineColor: [209, 213, 219],
             lineWidth: 0.2,
@@ -920,8 +997,8 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           didParseCell: (data) => {
             // Highlight diagonal cells (where r=1)
             if (data.section === 'body' && data.column.index === data.row.index + 1) {
-              data.cell.styles.fillColor = [235, 248, 255]; // Blue-50
-              data.cell.styles.textColor = [37, 99, 235]; // Blue-600
+              data.cell.styles.fillColor = [235, 248, 255];
+              data.cell.styles.textColor = [37, 99, 235];
               data.cell.styles.fontStyle = 'bold';
             }
 
@@ -930,20 +1007,29 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
               const cellValue = String(data.cell.raw || '');
               const numValue = parseFloat(cellValue.replace(/[*]/g, ''));
               if (!isNaN(numValue) && Math.abs(numValue) >= 0.7) {
-                data.cell.styles.fillColor = [219, 234, 254]; // Blue-100
+                data.cell.styles.fillColor = [219, 234, 254];
                 data.cell.styles.fontStyle = 'bold';
               }
             }
           }
         });
 
+        tablesCreated++;
         yPos = (doc as any).lastAutoTable.finalY + 12;
+        console.log(`Table for ${currentMethod} created, new yPos: ${yPos}`);
 
         // New page if needed
         if (yPos > doc.internal.pageSize.getHeight() - 50 && currentMethod !== methodsToExport[methodsToExport.length - 1]) {
           doc.addPage();
           yPos = 20;
+          console.log('Added new page');
         }
+      }
+
+      if (tablesCreated === 0) {
+        alert('No se pudieron crear tablas. Verifica que los datos estén disponibles.');
+        console.error('No tables were created - check data availability');
+        return;
       }
 
       // Footer legend
@@ -957,11 +1043,16 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
       // Save PDF
       const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.pdf`;
+      console.log(`Saving PDF: ${filename}`);
       doc.save(filename);
+      console.log('PDF export completed successfully');
 
     } catch (error) {
-      console.error('Error exporting PDF:', error);
-      alert('Error al exportar a PDF. Por favor intenta de nuevo.');
+      console.error('PDF export error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      const errorStack = error instanceof Error ? error.stack : '';
+      console.error('Error stack:', errorStack);
+      alert(`Error al exportar a PDF: ${errorMessage}`);
     }
   };
 
