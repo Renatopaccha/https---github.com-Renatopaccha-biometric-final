@@ -95,7 +95,10 @@ export function DescriptiveStats({ onNavigate }: { onNavigate?: (view: any, chat
               </div>
             )}
           >
-            <CorrelacionesView onBack={() => setCurrentView('hub')} />
+            <CorrelacionesView
+              onBack={() => setCurrentView('hub')}
+              onNavigateToChat={(chatId) => onNavigate && onNavigate('asistente', chatId)}
+            />
           </ErrorBoundary>
         );
       case 'tabla-inteligente':

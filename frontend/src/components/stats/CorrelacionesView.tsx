@@ -1,13 +1,15 @@
-import { ArrowLeft, ChevronDown, Plus, Trash2, Filter, ChevronRight, Play } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Plus, Trash2, Filter, ChevronRight, Play, Loader2, X, Sparkles } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import { ActionToolbar } from './ActionToolbar';
 import { useCorrelations, CorrelationResponse, FilterRule } from '../../hooks/useCorrelations';
 import { useDataContext } from '../../context/DataContext';
+import { sendChatMessage } from '../../api/ai';
 
 
 interface CorrelacionesViewProps {
   onBack: () => void;
+  onNavigateToChat?: (chatId?: string) => void;
 }
 
 // Academic-style cell background - softer, educational look
@@ -148,10 +150,17 @@ const excelStyles = {
 
 // FilterRule interface is now imported from the hook
 
-export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
+export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesViewProps) {
   // Context and hooks
   const { sessionId, columns: availableColumns } = useDataContext();
   const { correlationData, calculateCorrelations, loading, error } = useCorrelations();
+
+  // AI Interpretation State
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [contextSent, setContextSent] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
   // UI state
   const [selectedVars, setSelectedVars] = useState<string[]>([]);
@@ -438,271 +447,522 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
   };
 
   // =====================================================
+  // AI INTERPRETATION FUNCTIONS
+  // =====================================================
+
+  /**
+   * Generate a text context from correlation data for AI interpretation.
+   * Focuses on significant correlations and statistical parameters.
+   */
+  const getCorrelationContext = (): string => {
+    if (!correlationData || selectedVars.length < 2) {
+      return 'No hay datos de correlación disponibles.';
+    }
+
+    const methodsToAnalyze = method === 'comparar_todos'
+      ? ['pearson', 'spearman', 'kendall'] as const
+      : [method as 'pearson' | 'spearman' | 'kendall'];
+
+    const methodNames: Record<string, string> = {
+      pearson: 'Pearson (r) - Para relaciones lineales',
+      spearman: 'Spearman (ρ) - Para relaciones monotónicas',
+      kendall: 'Kendall (τ) - Robusto ante outliers'
+    };
+
+    let context = `**ANÁLISIS DE CORRELACIONES ESTADÍSTICAS**\n\n`;
+    context += `Variables analizadas: ${selectedVars.join(', ')}\n`;
+    context += `Segmento: ${activeSegmentTab}\n`;
+    context += `Método(s): ${methodsToAnalyze.map(m => methodNames[m]).join(', ')}\n\n`;
+
+    // For each method, extract significant correlations
+    for (const currentMethod of methodsToAnalyze) {
+      const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+
+      if (!matrixData) continue;
+
+      context += `### ${methodNames[currentMethod]}\n`;
+
+      const significantPairs: string[] = [];
+      const processedPairs = new Set<string>();
+
+      for (const rowVar of selectedVars) {
+        for (const colVar of selectedVars) {
+          if (rowVar === colVar) continue;
+
+          // Avoid duplicate pairs
+          const pairKey = [rowVar, colVar].sort().join('|');
+          if (processedPairs.has(pairKey)) continue;
+          processedPairs.add(pairKey);
+
+          const pairData = matrixData[rowVar]?.[colVar];
+          if (!pairData || pairData.r === null) continue;
+
+          const absR = Math.abs(pairData.r);
+          const isSignificant = pairData.p_value !== null && pairData.p_value < 0.05;
+          const strength = absR >= 0.7 ? 'FUERTE' : absR >= 0.3 ? 'MODERADA' : 'DÉBIL';
+          const direction = pairData.r >= 0 ? 'positiva' : 'negativa';
+
+          if (absR >= 0.3 || isSignificant) {
+            const pStr = pairData.p_value !== null
+              ? (pairData.p_value < 0.001 ? 'p<0.001' : `p=${pairData.p_value.toFixed(3)}`)
+              : 'p=N/A';
+
+            significantPairs.push(
+              `- ${rowVar} ↔ ${colVar}: r=${pairData.r.toFixed(3)} (${strength} ${direction}), ${pStr}, N=${pairData.n}`
+            );
+          }
+        }
+      }
+
+      if (significantPairs.length > 0) {
+        context += `Correlaciones relevantes:\n${significantPairs.join('\n')}\n\n`;
+      } else {
+        context += `No se encontraron correlaciones significativas (|r|≥0.3 o p<0.05).\n\n`;
+      }
+    }
+
+    context += `\n**Notas estadísticas:**\n`;
+    context += `- Correlación fuerte: |r| ≥ 0.7\n`;
+    context += `- Correlación moderada: 0.3 ≤ |r| < 0.7\n`;
+    context += `- Correlación débil: |r| < 0.3\n`;
+    context += `- Significancia estadística: p < 0.05\n`;
+
+    return context;
+  };
+
+  /**
+   * Handler for AI Interpretation button.
+   * Sends correlation data to AI for statistical analysis.
+   */
+  const handleAIInterpretation = async () => {
+    if (analysisResult || isAnalyzing) return;
+    if (!correlationData || selectedVars.length < 2) {
+      alert('Primero genera una matriz de correlación seleccionando al menos 2 variables.');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const correlationContext = getCorrelationContext();
+      const prompt = `Analiza la siguiente matriz de correlaciones estadísticas. Como experto en bioestadística, proporciona:
+
+1. **Hallazgos clave**: Las correlaciones más relevantes y su significado práctico.
+2. **Interpretación clínica/científica**: Qué implican estas relaciones para la investigación.
+3. **Recomendaciones**: Análisis adicionales sugeridos (regresión, modelos multivariantes, etc).
+
+Sé conciso y enfócate en lo estadísticamente significativo.
+
+${correlationContext}`;
+
+      const response = await sendChatMessage({
+        session_id: sessionId || undefined,
+        chat_id: activeChatId || undefined,
+        message: prompt,
+        history: []
+      });
+
+      if (response.success) {
+        setAnalysisResult(response.response);
+        setContextSent(true);
+        if (response.chat_id) {
+          setActiveChatId(response.chat_id);
+        }
+      } else {
+        console.error('AI interpretation failed:', response.error);
+        alert('No se pudo obtener la interpretación de IA. Intente nuevamente.');
+      }
+    } catch (err) {
+      console.error('AI Interpretation error:', err);
+      alert('Error de conexión con el servicio de IA.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  /**
+   * Handler for Continue to Chat button.
+   * Packages correlation context and navigates to AI Assistant.
+   */
+  const handleContinueToChat = async () => {
+    if (!onNavigateToChat || !sessionId) return;
+
+    let finalChatId = activeChatId;
+
+    try {
+      setIsNavigating(true);
+
+      const correlationContext = getCorrelationContext();
+      const interpretationContext = analysisResult
+        ? `\n\n**Interpretación Previa Realizada:**\n${analysisResult}`
+        : '\n\n(El usuario aún no ha solicitado una interpretación automática)';
+
+      const handoffMessage = `**SYSTEM CONTEXT HANDOFF - ANÁLISIS DE CORRELACIONES**
+
+Estás recibiendo el contexto de la sesión actual de "Correlaciones" para asistir al usuario.
+
+DATOS ESTRUCTURADOS:
+${correlationContext}
+${interpretationContext}
+
+INSTRUCCIÓN:
+El usuario ha sido transferido al chat principal desde el módulo de correlaciones. Mantén este contexto en memoria para responder preguntas sobre estas correlaciones y sus implicaciones estadísticas. Saluda brevemente confirmando que tienes los datos de correlación.`;
+
+      const response = await sendChatMessage({
+        session_id: sessionId,
+        chat_id: activeChatId || undefined,
+        message: handoffMessage,
+        history: []
+      });
+
+      if (response.chat_id) {
+        finalChatId = response.chat_id;
+        setActiveChatId(response.chat_id);
+      }
+
+      setContextSent(true);
+    } catch (error) {
+      console.error('Error transferring correlation context:', error);
+      // Continue anyway to not block user
+    } finally {
+      setIsNavigating(false);
+      onNavigateToChat(finalChatId || undefined);
+    }
+  };
+
+  // =====================================================
   // EXPORT FUNCTIONS
   // =====================================================
 
-  // Export to Excel with academic styling
+  // Export to Excel with academic styling matching the app UI
   const handleExportExcel = () => {
     if (!correlationData || selectedVars.length < 2) {
       alert('No hay datos de correlación para exportar. Selecciona al menos 2 variables.');
       return;
     }
 
-    const wb = XLSX.utils.book_new();
-    const methodsToExport = method === 'comparar_todos'
-      ? ['pearson', 'spearman', 'kendall'] as const
-      : [method as 'pearson' | 'spearman' | 'kendall'];
+    try {
+      const wb = XLSX.utils.book_new();
+      const methodsToExport = method === 'comparar_todos'
+        ? ['pearson', 'spearman', 'kendall'] as const
+        : [method as 'pearson' | 'spearman' | 'kendall'];
 
-    const methodNames: Record<string, string> = {
-      pearson: 'Pearson (r)',
-      spearman: 'Spearman (ρ)',
-      kendall: 'Kendall (τ)'
-    };
-
-    for (const currentMethod of methodsToExport) {
-      const ws: XLSX.WorkSheet = {};
-      let rowNum = 0;
-
-      // Get matrix data for current segment and method
-      const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
-
-      if (!matrixData) continue;
-
-      // Title row
-      const titleCellRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
-      ws[titleCellRef] = {
-        v: `Matriz de Correlación - ${methodNames[currentMethod]}`,
-        t: 's',
-        s: { font: { bold: true, sz: 14 }, alignment: { horizontal: 'left' } }
+      const methodLabelsMap: Record<string, string> = {
+        pearson: 'Pearson (r)',
+        spearman: 'Spearman (ρ)',
+        kendall: 'Kendall (τ)'
       };
-      rowNum += 2;
 
-      // Header row (empty cell + variable names)
-      const headerCellRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
-      ws[headerCellRef] = { v: 'Variable', t: 's', s: excelStyles.header };
+      for (const currentMethod of methodsToExport) {
+        const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+        if (!matrixData) continue;
 
-      selectedVars.forEach((variable, colIdx) => {
-        const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 });
-        ws[cellRef] = { v: variable, t: 's', s: excelStyles.header };
-      });
-      rowNum++;
+        // Build the data array for the sheet
+        const sheetData: any[][] = [];
 
-      // Data rows
-      for (const rowVar of selectedVars) {
-        // Variable name in first column
-        const labelCellRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
-        ws[labelCellRef] = { v: rowVar, t: 's', s: excelStyles.variableLabel };
+        // Title row
+        sheetData.push([`Matriz de Correlación - ${methodLabelsMap[currentMethod]}`]);
+        sheetData.push([`Segmento: ${activeSegmentTab} | Fecha: ${new Date().toLocaleDateString('es-ES')}`]);
+        sheetData.push([]); // Empty row
 
-        // Correlation values
-        selectedVars.forEach((colVar, colIdx) => {
-          const pairData = matrixData[rowVar]?.[colVar];
-          const isDiagonal = rowVar === colVar;
-          const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 });
+        // Header row: empty cell + variable names
+        const headerRow = ['Variable', ...selectedVars];
+        sheetData.push(headerRow);
 
-          const value = pairData?.r !== null && pairData?.r !== undefined
-            ? pairData.r.toFixed(3)
-            : '—';
+        // Data rows
+        for (const rowVar of selectedVars) {
+          const dataRow: (string | number)[] = [rowVar];
 
-          // Apply conditional styling
-          let cellStyle = excelStyles.cell;
-          if (isDiagonal) {
-            cellStyle = excelStyles.diagonal;
-          } else if (pairData?.r !== null && Math.abs(pairData.r) >= 0.7) {
-            cellStyle = excelStyles.strong;
+          for (const colVar of selectedVars) {
+            const pairData = matrixData[rowVar]?.[colVar];
+            const isDiagonal = rowVar === colVar;
+
+            if (!pairData || pairData.r === null || pairData.r === undefined) {
+              dataRow.push('—');
+            } else {
+              // For diagonal, show 1.000
+              if (isDiagonal) {
+                dataRow.push('1.000');
+              } else {
+                // Show coefficient with significance stars
+                const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
+                dataRow.push(`${pairData.r.toFixed(3)}${significance}`);
+              }
+            }
           }
+          sheetData.push(dataRow);
+        }
 
-          ws[cellRef] = {
-            v: pairData?.r !== null ? pairData.r : '',
-            t: pairData?.r !== null ? 'n' : 's',
-            s: cellStyle,
-            z: '0.000' // Number format
-          };
-        });
+        // Empty row and legend
+        sheetData.push([]);
+        sheetData.push(['Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001']);
+        sheetData.push([`N = ${correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix?.[selectedVars[0]]?.[selectedVars[0]]?.n || 'N/A'} pares`]);
 
-        rowNum++;
+        // Create worksheet from array
+        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+        // Apply column widths
+        ws['!cols'] = [
+          { wch: 22 }, // Variable column
+          ...selectedVars.map(() => ({ wch: 14 }))
+        ];
+
+        // Apply styles to cells
+        const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+
+        for (let R = range.s.r; R <= range.e.r; R++) {
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+            const cell = ws[cellRef];
+
+            if (!cell) continue;
+
+            // Title row (row 0)
+            if (R === 0) {
+              cell.s = {
+                font: { bold: true, sz: 14, color: { rgb: "1E293B" } },
+                alignment: { horizontal: 'left' }
+              };
+            }
+            // Subtitle row (row 1)
+            else if (R === 1) {
+              cell.s = {
+                font: { italic: true, sz: 10, color: { rgb: "64748B" } },
+                alignment: { horizontal: 'left' }
+              };
+            }
+            // Header row (row 3)
+            else if (R === 3) {
+              cell.s = excelStyles.header;
+            }
+            // Data rows (rows 4 onwards, before legend)
+            else if (R >= 4 && R < 4 + selectedVars.length) {
+              const dataRowIndex = R - 4;
+              const dataColIndex = C - 1;
+
+              // First column (variable names)
+              if (C === 0) {
+                cell.s = excelStyles.variableLabel;
+              }
+              // Diagonal cells
+              else if (dataRowIndex === dataColIndex) {
+                cell.s = excelStyles.diagonal;
+              }
+              // Strong correlations
+              else if (typeof cell.v === 'string') {
+                const numValue = parseFloat(cell.v.replace(/[*]/g, ''));
+                if (!isNaN(numValue) && Math.abs(numValue) >= 0.7) {
+                  cell.s = excelStyles.strong;
+                } else {
+                  cell.s = excelStyles.cell;
+                }
+              } else {
+                cell.s = excelStyles.cell;
+              }
+            }
+            // Legend rows
+            else if (R >= 4 + selectedVars.length + 1) {
+              cell.s = {
+                font: { italic: true, sz: 9, color: { rgb: "6B7280" } },
+                alignment: { horizontal: 'left' }
+              };
+            }
+          }
+        }
+
+        // Add sheet to workbook
+        const sheetName = method === 'comparar_todos'
+          ? methodLabelsMap[currentMethod].substring(0, 31)
+          : 'Correlaciones';
+
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
       }
 
-      // Add significance legend
-      rowNum += 2;
-      const legendRef = XLSX.utils.encode_cell({ r: rowNum, c: 0 });
-      ws[legendRef] = {
-        v: 'Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001',
-        t: 's',
-        s: { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } }
-      };
+      // Generate file using Blob for browser compatibility
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
-      // Set range
-      ws['!ref'] = XLSX.utils.encode_range({
-        s: { r: 0, c: 0 },
-        e: { r: rowNum, c: selectedVars.length }
-      });
+      // Create download link
+      const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
-      // Column widths
-      ws['!cols'] = [
-        { wch: 20 }, // Variable names column
-        ...selectedVars.map(() => ({ wch: 12 }))
-      ];
-
-      // Add sheet to workbook
-      const sheetName = method === 'comparar_todos'
-        ? methodNames[currentMethod].substring(0, 31)
-        : 'Correlaciones';
-
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      alert('Error al exportar a Excel. Por favor intenta de nuevo.');
     }
-
-    // Generate filename
-    const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : methodNames[method as keyof typeof methodNames]}${segmentBy ? `_${activeSegmentTab}` : ''}.xlsx`;
-    XLSX.writeFile(wb, filename);
   };
 
-  // Export to PDF with professional formatting
+  // Export to PDF with professional formatting matching the app UI
   const handleExportPDF = async () => {
     if (!correlationData || selectedVars.length < 2) {
       alert('No hay datos de correlación para exportar. Selecciona al menos 2 variables.');
       return;
     }
 
-    // Dynamic imports
-    const { default: jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
+    try {
+      // Dynamic imports
+      const { default: jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
 
-    const doc = new jsPDF({ orientation: selectedVars.length > 5 ? 'landscape' : 'portrait' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let yPos = 20;
+      const doc = new jsPDF({ orientation: selectedVars.length > 5 ? 'landscape' : 'portrait' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let yPos = 20;
 
-    // Title
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Reporte de Correlaciones', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
-
-    // Metadata
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 5;
-    doc.text(`Variables: ${selectedVars.join(', ')}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 5;
-
-    if (segmentBy) {
-      doc.text(`Segmento activo: ${activeSegmentTab}`, pageWidth / 2, yPos, { align: 'center' });
-      yPos += 5;
-    }
-    yPos += 10;
-
-    // Methods to export
-    const methodsToExport = method === 'comparar_todos'
-      ? ['pearson', 'spearman', 'kendall'] as const
-      : [method as 'pearson' | 'spearman' | 'kendall'];
-
-    const methodNames: Record<string, string> = {
-      pearson: 'Correlación de Pearson (r)',
-      spearman: 'Correlación de Spearman (ρ)',
-      kendall: 'Correlación de Kendall (τ)'
-    };
-
-    for (const currentMethod of methodsToExport) {
-      const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
-
-      if (!matrixData) continue;
-
-      // Method title
-      doc.setFontSize(12);
+      // Title with teal accent bar
+      doc.setFillColor(20, 184, 166); // Teal-500
+      doc.rect(14, yPos - 5, 4, 12, 'F');
+      doc.setFontSize(18);
       doc.setFont('helvetica', 'bold');
-      doc.text(methodNames[currentMethod], 14, yPos);
-      yPos += 8;
+      doc.setTextColor(30, 41, 59); // Slate-800
+      doc.text('Reporte de Correlaciones', 22, yPos + 4);
+      yPos += 18;
 
-      // Build table data
-      const tableHead = ['Variable', ...selectedVars];
-      const tableBody: string[][] = [];
+      // Subtitle
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139); // Slate-500
+      doc.text('Análisis estadístico de relaciones entre variables', 22, yPos);
+      yPos += 12;
 
-      for (const rowVar of selectedVars) {
-        const row: string[] = [rowVar];
-
-        for (const colVar of selectedVars) {
-          const pairData = matrixData[rowVar]?.[colVar];
-          const significance = pairData?.p_value !== null && pairData?.p_value !== undefined
-            ? getSignificance(pairData.p_value)
-            : '';
-
-          const value = pairData?.r !== null && pairData?.r !== undefined
-            ? `${pairData.r.toFixed(3)}${significance}`
-            : '—';
-
-          row.push(value);
-        }
-
-        tableBody.push(row);
+      // Metadata box
+      doc.setFillColor(248, 250, 252); // Slate-50
+      doc.roundedRect(14, yPos, pageWidth - 28, 22, 3, 3, 'F');
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105); // Slate-600
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}`, 18, yPos + 7);
+      doc.text(`Variables: ${selectedVars.join(' • ')}`, 18, yPos + 14);
+      if (segmentBy) {
+        doc.text(`Segmento: ${activeSegmentTab}`, pageWidth - 60, yPos + 7);
       }
+      yPos += 30;
 
-      // Generate table
-      autoTable(doc, {
-        startY: yPos,
-        head: [tableHead],
-        body: tableBody,
-        theme: 'grid',
-        headStyles: {
-          fillColor: [242, 242, 242],
-          textColor: [68, 71, 70],
-          lineColor: [209, 213, 219],
-          lineWidth: 0.1,
-          fontStyle: 'bold',
-          fontSize: 8,
-          halign: 'center'
-        },
-        bodyStyles: {
-          lineColor: [209, 213, 219],
-          lineWidth: 0.1,
-          textColor: [55, 65, 81],
-          fontSize: 8,
-          halign: 'center'
-        },
-        columnStyles: {
-          0: { halign: 'left', fontStyle: 'bold' } // Variable column
-        },
-        margin: { left: 14, right: 14 },
-        styles: { cellPadding: 2 },
-        didParseCell: (data) => {
-          // Highlight diagonal cells
-          if (data.section === 'body' && data.column.index === data.row.index + 1) {
-            data.cell.styles.fillColor = [235, 248, 255]; // Light blue
-            data.cell.styles.textColor = [37, 99, 235];
-            data.cell.styles.fontStyle = 'bold';
-          }
+      // Methods to export
+      const methodsToExport = method === 'comparar_todos'
+        ? ['pearson', 'spearman', 'kendall'] as const
+        : [method as 'pearson' | 'spearman' | 'kendall'];
 
-          // Highlight strong correlations
-          if (data.section === 'body' && data.column.index > 0) {
-            const cellValue = String(data.cell.raw || '');
-            const numValue = parseFloat(cellValue.replace(/[*]/g, ''));
-            if (!isNaN(numValue) && Math.abs(numValue) >= 0.7 && data.column.index !== data.row.index + 1) {
-              data.cell.styles.fillColor = [219, 234, 254]; // Soft blue
-              data.cell.styles.fontStyle = 'bold';
+      const methodLabels: Record<string, string> = {
+        pearson: 'Coeficiente de Pearson (r)',
+        spearman: 'Coeficiente de Spearman (ρ)',
+        kendall: 'Coeficiente de Kendall (τ)'
+      };
+
+      for (const currentMethod of methodsToExport) {
+        const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+
+        if (!matrixData) continue;
+
+        // Method title
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(30, 41, 59);
+        doc.text(methodLabels[currentMethod], 14, yPos);
+        yPos += 6;
+
+        // Build table data
+        const tableHead = ['Variable', ...selectedVars];
+        const tableBody: string[][] = [];
+
+        for (const rowVar of selectedVars) {
+          const row: string[] = [rowVar];
+
+          for (const colVar of selectedVars) {
+            const pairData = matrixData[rowVar]?.[colVar];
+            const isDiagonal = rowVar === colVar;
+
+            if (isDiagonal) {
+              row.push('1.000');
+            } else if (!pairData || pairData.r === null || pairData.r === undefined) {
+              row.push('—');
+            } else {
+              const significance = pairData.p_value !== null ? getSignificance(pairData.p_value) : '';
+              row.push(`${pairData.r.toFixed(3)}${significance}`);
             }
           }
+
+          tableBody.push(row);
         }
-      });
 
-      yPos = (doc as any).lastAutoTable.finalY + 15;
+        // Generate table with academic styling
+        autoTable(doc, {
+          startY: yPos,
+          head: [tableHead],
+          body: tableBody,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [242, 242, 242], // Gray-100
+            textColor: [68, 71, 70],
+            lineColor: [209, 213, 219],
+            lineWidth: 0.2,
+            fontStyle: 'bold',
+            fontSize: 8,
+            halign: 'center',
+            cellPadding: 3
+          },
+          bodyStyles: {
+            lineColor: [229, 231, 235],
+            lineWidth: 0.1,
+            textColor: [55, 65, 81],
+            fontSize: 9,
+            halign: 'center',
+            cellPadding: 4
+          },
+          columnStyles: {
+            0: { halign: 'left', fontStyle: 'bold', fillColor: [248, 250, 252] }
+          },
+          margin: { left: 14, right: 14 },
+          didParseCell: (data) => {
+            // Highlight diagonal cells (where r=1)
+            if (data.section === 'body' && data.column.index === data.row.index + 1) {
+              data.cell.styles.fillColor = [235, 248, 255]; // Blue-50
+              data.cell.styles.textColor = [37, 99, 235]; // Blue-600
+              data.cell.styles.fontStyle = 'bold';
+            }
 
-      // New page if needed
-      if (yPos > doc.internal.pageSize.getHeight() - 40 && currentMethod !== methodsToExport[methodsToExport.length - 1]) {
-        doc.addPage();
-        yPos = 20;
+            // Highlight strong correlations (|r| >= 0.7)
+            if (data.section === 'body' && data.column.index > 0 && data.column.index !== data.row.index + 1) {
+              const cellValue = String(data.cell.raw || '');
+              const numValue = parseFloat(cellValue.replace(/[*]/g, ''));
+              if (!isNaN(numValue) && Math.abs(numValue) >= 0.7) {
+                data.cell.styles.fillColor = [219, 234, 254]; // Blue-100
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+          }
+        });
+
+        yPos = (doc as any).lastAutoTable.finalY + 12;
+
+        // New page if needed
+        if (yPos > doc.internal.pageSize.getHeight() - 50 && currentMethod !== methodsToExport[methodsToExport.length - 1]) {
+          doc.addPage();
+          yPos = 20;
+        }
       }
-    }
 
-    // Footer legend
-    if (yPos < doc.internal.pageSize.getHeight() - 30) {
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'italic');
-      doc.setTextColor(107, 114, 128);
-      doc.text('Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001', 14, yPos + 5);
-    }
+      // Footer legend
+      if (yPos < doc.internal.pageSize.getHeight() - 35) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(107, 114, 128);
+        doc.text('Leyenda de significancia: * p < 0.05   ** p < 0.01   *** p < 0.001', 14, yPos + 5);
+        doc.text('Nota: Las celdas diagonales (r = 1.000) indican correlación perfecta de cada variable consigo misma.', 14, yPos + 11);
+      }
 
-    // Save PDF
-    const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.pdf`;
-    doc.save(filename);
+      // Save PDF
+      const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.pdf`;
+      doc.save(filename);
+
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Error al exportar a PDF. Por favor intenta de nuevo.');
+    }
   };
 
   return (
@@ -1082,6 +1342,55 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
             </div>
           )}
 
+          {/* AI Analysis Panel */}
+          {(analysisResult || isAnalyzing) && (
+            <div className="mb-6 bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-200 shadow-sm relative overflow-hidden transition-all duration-300">
+              {/* Background decoration */}
+              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+
+              <div className="p-6 relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+                      {isAnalyzing ? (
+                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                      ) : (
+                        <Sparkles className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                      {isAnalyzing ? 'Analizando correlaciones...' : 'Análisis de Correlaciones por IA'}
+                    </h3>
+                  </div>
+                  {!isAnalyzing && (
+                    <button
+                      onClick={() => setAnalysisResult(null)}
+                      className="p-1 hover:bg-black/5 rounded-full transition-colors text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 border border-indigo-100 min-h-[100px]">
+                  {isAnalyzing ? (
+                    <div className="space-y-3 animate-pulse">
+                      <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-1/2"></div>
+                      <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm prose-indigo max-w-none text-slate-700" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                      {analysisResult!.split('\n').map((line, i) => (
+                        <p key={i} className="mb-2 last:mb-0">{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Results Table */}
           <div className={`bg-white ${showMethodTabs || showSegmentTabs ? 'rounded-b-xl' : 'rounded-xl'} shadow-lg border border-slate-200 overflow-hidden`}>
             <div className="px-8 py-5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
@@ -1254,6 +1563,10 @@ export function CorrelacionesView({ onBack }: CorrelacionesViewProps) {
             <ActionToolbar
               onExportExcel={handleExportExcel}
               onExportPDF={handleExportPDF}
+              onAIInterpretation={handleAIInterpretation}
+              onContinueToChat={handleContinueToChat}
+              isAnalyzing={isAnalyzing}
+              isNavigating={isNavigating}
             />
           </div>
         </div>
