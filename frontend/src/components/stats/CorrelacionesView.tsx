@@ -633,12 +633,11 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
   // EXPORT FUNCTIONS
   // =====================================================
 
-  // Export to Excel with academic styling (same pattern as TablasFrecuenciaView)
+  // Export to Excel with academic styling (matching UI)
   const handleExportExcel = () => {
     // Validation
     if (!correlationData) {
       alert('No hay datos de correlación disponibles.');
-      console.error('handleExportExcel: correlationData is null/undefined');
       return;
     }
 
@@ -648,11 +647,6 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
     }
 
     try {
-      console.log('Starting Excel export...');
-      console.log('Method:', method);
-      console.log('Active Segment:', activeSegmentTab);
-      console.log('Selected Variables:', selectedVars);
-
       const wb = XLSX.utils.book_new();
 
       // Determine which methods to export
@@ -661,7 +655,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           ? ['pearson', 'spearman', 'kendall']
           : [method as 'pearson' | 'spearman' | 'kendall'];
 
-      const methodLabels: Record<string, string> = {
+      const methodLabelsMap: Record<string, string> = {
         pearson: 'Pearson',
         spearman: 'Spearman',
         kendall: 'Kendall'
@@ -675,21 +669,16 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         const methodData = segmentData?.[currentMethod];
         const matrixData = methodData?.matrix;
 
-        console.log(`Processing ${currentMethod}:`, { segmentData: !!segmentData, methodData: !!methodData, matrixData: !!matrixData });
+        if (!matrixData) continue;
 
-        if (!matrixData) {
-          console.warn(`No matrix data for ${currentMethod} in segment ${activeSegmentTab}`);
-          continue;
-        }
-
-        // Create worksheet using cell-by-cell construction (more reliable for styles)
+        // Create worksheet using cell-by-cell construction
         const ws: XLSX.WorkSheet = {};
         let rowNum = 0;
         const numCols = selectedVars.length + 1; // Variable column + data columns
 
         // Row 0: Title
         ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
-          v: `Matriz de Correlación - ${methodLabels[currentMethod]}`,
+          v: `Matriz de Correlación - ${methodLabelsMap[currentMethod]}`,
           t: 's',
           s: { font: { bold: true, sz: 14, color: { rgb: "1E293B" } } }
         };
@@ -743,40 +732,45 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
             const pairData = matrixData?.[rowVar]?.[colVar];
 
             if (isDiagonal) {
-              // Diagonal cell - always 1.000
+              // Diagonal cell
               ws[cellRef] = {
-                v: 1,
-                t: 'n',
-                z: '0.000',
-                s: excelStyles.diagonal
+                v: '1.000\n—\n—',
+                t: 's',
+                s: {
+                  ...excelStyles.diagonal,
+                  alignment: { horizontal: "center", vertical: "center", wrapText: true }
+                }
               };
             } else if (!pairData || pairData.r === null || pairData.r === undefined) {
               // Missing data
               ws[cellRef] = {
-                v: '—',
+                v: '—\n—\n—',
                 t: 's',
                 s: excelStyles.cell
               };
             } else {
               // Normal correlation value
-              const r = pairData.r;
-              const significance = pairData.p_value !== null && pairData.p_value !== undefined
-                ? getSignificance(pairData.p_value)
+              const r = pairData.r.toFixed(3);
+              const p = pairData.p_value !== null
+                ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3))
+                : '—';
+              const n = pairData.n !== null ? pairData.n.toString() : '—';
+
+              const isStrong = Math.abs(pairData.r) >= 0.7;
+
+              // Determine significance stars for display
+              const stars = pairData.p_value !== null && pairData.p_value < 0.05
+                ? (pairData.p_value < 0.001 ? '***' : (pairData.p_value < 0.01 ? '**' : '*'))
                 : '';
-              const isStrong = Math.abs(r) >= 0.7;
 
               ws[cellRef] = {
-                v: r,
-                t: 'n',
-                z: '0.000',
-                s: isStrong ? excelStyles.strong : excelStyles.cell
+                v: `${r}${stars}\np=${p}\nN=${n}`,
+                t: 's',
+                s: {
+                  ...(isStrong ? excelStyles.strong : excelStyles.cell),
+                  alignment: { horizontal: "center", vertical: "center", wrapText: true }
+                }
               };
-
-              // Add significance stars as separate text if needed
-              if (significance) {
-                ws[cellRef].v = `${r.toFixed(3)}${significance}`;
-                ws[cellRef].t = 's';
-              }
             }
           }
           rowNum++;
@@ -787,16 +781,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
         // Legend row
         ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
-          v: 'Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001',
-          t: 's',
-          s: { font: { italic: true, sz: 9, color: { rgb: "6B7280" } } }
-        };
-        rowNum++;
-
-        // N info row
-        const sampleN = matrixData?.[selectedVars[0]]?.[selectedVars[0]]?.n;
-        ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
-          v: `N = ${sampleN || 'N/A'} observaciones`,
+          v: 'Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001. Formato celda: Coeficiente / p-valor / N',
           t: 's',
           s: { font: { italic: true, sz: 9, color: { rgb: "6B7280" } } }
         };
@@ -805,37 +790,49 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         // Set worksheet range
         ws['!ref'] = XLSX.utils.encode_range({
           s: { r: 0, c: 0 },
-          e: { r: rowNum - 1, c: numCols - 1 }
+          e: { r: rowNum, c: numCols - 1 }
         });
 
         // Set column widths
         ws['!cols'] = [
-          { wch: 20 }, // Variable column
-          ...selectedVars.map(() => ({ wch: 14 }))
+          { wch: 25 }, // Variable column wider
+          ...selectedVars.map(() => ({ wch: 15 })) // Data columns
         ];
+
+        // Set row heights to accommodate multi-line cells
+        const rowHeights = [];
+        // Header rows
+        rowHeights[0] = { hpt: 24 };
+        rowHeights[1] = { hpt: 18 };
+
+        // Header variable row
+        const headerRowIdx = 3;
+        rowHeights[headerRowIdx] = { hpt: 30 };
+
+        // Data rows (need more height for 3 lines)
+        for (let i = 0; i < selectedVars.length; i++) {
+          rowHeights[headerRowIdx + 1 + i] = { hpt: 55 };
+        }
+
+        ws['!rows'] = rowHeights;
 
         // Add sheet to workbook
         const sheetName = method === 'comparar_todos'
-          ? methodLabels[currentMethod]
+          ? methodLabelsMap[currentMethod]
           : 'Correlaciones';
 
         XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
         sheetsCreated++;
-        console.log(`Sheet "${sheetName}" created successfully`);
       }
 
       if (sheetsCreated === 0) {
         alert('No se pudieron crear hojas. Verifica que los datos estén disponibles.');
-        console.error('No sheets were created - check data availability');
         return;
       }
 
       // Generate and download file
       const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.xlsx`;
-
-      console.log(`Writing file: ${filename}`);
       XLSX.writeFile(wb, filename);
-      console.log('Excel export completed successfully');
 
     } catch (error) {
       console.error('Excel export error:', error);
@@ -843,12 +840,11 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
     }
   };
 
-  // Export to PDF with professional formatting (same pattern as TablasFrecuenciaView)
+  // Export to PDF with professional formatting (matching UI)
   const handleExportPDF = async () => {
     // Validation
     if (!correlationData) {
       alert('No hay datos de correlación disponibles.');
-      console.error('handleExportPDF: correlationData is null/undefined');
       return;
     }
 
@@ -858,18 +854,11 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
     }
 
     try {
-      console.log('Starting PDF export...');
-      console.log('Method:', method);
-      console.log('Active Segment:', activeSegmentTab);
-      console.log('Selected Variables:', selectedVars);
-
       // Dynamic imports
-      console.log('Loading jsPDF and autoTable...');
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
-      console.log('Libraries loaded successfully');
 
-      const isLandscape = selectedVars.length > 5;
+      const isLandscape = selectedVars.length > 4;
       const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait' });
       const pageWidth = doc.internal.pageSize.getWidth();
       let yPos = 20;
@@ -908,7 +897,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           ? ['pearson', 'spearman', 'kendall']
           : [method as 'pearson' | 'spearman' | 'kendall'];
 
-      const methodLabels: Record<string, string> = {
+      const methodLabelsMap: Record<string, string> = {
         pearson: 'Coeficiente de Pearson (r)',
         spearman: 'Coeficiente de Spearman (ρ)',
         kendall: 'Coeficiente de Kendall (τ)'
@@ -917,25 +906,18 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
       let tablesCreated = 0;
 
       for (const currentMethod of methodsToExport) {
-        console.log(`Processing method: ${currentMethod}`);
-
         // Safely access matrix data
         const segmentData = correlationData?.tables?.[activeSegmentTab];
         const methodData = segmentData?.[currentMethod];
         const matrixData = methodData?.matrix;
 
-        console.log(`${currentMethod} data:`, { hasSegment: !!segmentData, hasMethod: !!methodData, hasMatrix: !!matrixData });
-
-        if (!matrixData) {
-          console.warn(`No matrix data for ${currentMethod} in segment ${activeSegmentTab}`);
-          continue;
-        }
+        if (!matrixData) continue;
 
         // Method title
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(30, 41, 59);
-        doc.text(methodLabels[currentMethod], 14, yPos);
+        doc.text(methodLabelsMap[currentMethod], 14, yPos);
         yPos += 6;
 
         // Build table data
@@ -950,23 +932,27 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
             const isDiagonal = rowVar === colVar;
 
             if (isDiagonal) {
-              row.push('1.000');
+              row.push('1.000\n—\n—');
             } else if (!pairData || pairData.r === null || pairData.r === undefined) {
-              row.push('—');
+              row.push('—\n—\n—');
             } else {
-              const significance = pairData.p_value !== null && pairData.p_value !== undefined
-                ? getSignificance(pairData.p_value)
+              const r = pairData.r.toFixed(3);
+              const p = pairData.p_value !== null
+                ? (pairData.p_value < 0.001 ? '< 0.001' : pairData.p_value.toFixed(3))
+                : '—';
+              const n = pairData.n !== null ? pairData.n.toString() : '—';
+              const significance = pairData.p_value !== null && pairData.p_value < 0.05
+                ? (pairData.p_value < 0.001 ? '***' : (pairData.p_value < 0.01 ? '**' : '*'))
                 : '';
-              row.push(`${pairData.r.toFixed(3)}${significance}`);
+
+              row.push(`${r}${significance}\np=${p}\nN=${n}`);
             }
           }
 
           tableBody.push(row);
         }
 
-        console.log(`Table for ${currentMethod}:`, { head: tableHead.length, body: tableBody.length });
-
-        // Generate table with academic styling
+        // Generate table with consistent styling
         autoTable(doc, {
           startY: yPos,
           head: [tableHead],
@@ -978,24 +964,26 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
             lineColor: [209, 213, 219],
             lineWidth: 0.2,
             fontStyle: 'bold',
-            fontSize: 8,
+            fontSize: 9,
             halign: 'center',
-            cellPadding: 3
+            cellPadding: 3,
+            valign: 'middle'
           },
           bodyStyles: {
             lineColor: [229, 231, 235],
             lineWidth: 0.1,
             textColor: [55, 65, 81],
-            fontSize: 9,
+            fontSize: 8,
             halign: 'center',
-            cellPadding: 4
+            valign: 'middle',
+            cellPadding: 3
           },
           columnStyles: {
-            0: { halign: 'left', fontStyle: 'bold', fillColor: [248, 250, 252] }
+            0: { halign: 'left', fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 35 }
           },
           margin: { left: 14, right: 14 },
           didParseCell: (data) => {
-            // Highlight diagonal cells (where r=1)
+            // Highlight diagonal cells
             if (data.section === 'body' && data.column.index === data.row.index + 1) {
               data.cell.styles.fillColor = [235, 248, 255];
               data.cell.styles.textColor = [37, 99, 235];
@@ -1004,11 +992,15 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
             // Highlight strong correlations (|r| >= 0.7)
             if (data.section === 'body' && data.column.index > 0 && data.column.index !== data.row.index + 1) {
-              const cellValue = String(data.cell.raw || '');
-              const numValue = parseFloat(cellValue.replace(/[*]/g, ''));
-              if (!isNaN(numValue) && Math.abs(numValue) >= 0.7) {
-                data.cell.styles.fillColor = [219, 234, 254];
-                data.cell.styles.fontStyle = 'bold';
+              const cellText = String(data.cell.raw || '');
+              const rValueMatch = cellText.match(/^(-?\d+\.\d+)/);
+
+              if (rValueMatch) {
+                const rVal = parseFloat(rValueMatch[1]);
+                if (!isNaN(rVal) && Math.abs(rVal) >= 0.7) {
+                  data.cell.styles.fillColor = [219, 234, 254];
+                  data.cell.styles.fontStyle = 'bold';
+                }
               }
             }
           }
@@ -1016,19 +1008,16 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
         tablesCreated++;
         yPos = (doc as any).lastAutoTable.finalY + 12;
-        console.log(`Table for ${currentMethod} created, new yPos: ${yPos}`);
 
         // New page if needed
         if (yPos > doc.internal.pageSize.getHeight() - 50 && currentMethod !== methodsToExport[methodsToExport.length - 1]) {
           doc.addPage();
           yPos = 20;
-          console.log('Added new page');
         }
       }
 
       if (tablesCreated === 0) {
         alert('No se pudieron crear tablas. Verifica que los datos estén disponibles.');
-        console.error('No tables were created - check data availability');
         return;
       }
 
@@ -1037,22 +1026,17 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         doc.setFontSize(8);
         doc.setFont('helvetica', 'italic');
         doc.setTextColor(107, 114, 128);
-        doc.text('Leyenda de significancia: * p < 0.05   ** p < 0.01   *** p < 0.001', 14, yPos + 5);
-        doc.text('Nota: Las celdas diagonales (r = 1.000) indican correlación perfecta de cada variable consigo misma.', 14, yPos + 11);
+        doc.text('Leyenda: * p < 0.05, ** p < 0.01, *** p < 0.001. Formato: Coeficiente / p-valor / N', 14, yPos + 5);
+        doc.text('Nota: Las celdas diagonales indican la correlación de cada variable consigo misma.', 14, yPos + 10);
       }
 
       // Save PDF
       const filename = `Correlaciones_${method === 'comparar_todos' ? 'Comparativo' : method}${segmentBy ? `_${activeSegmentTab}` : ''}.pdf`;
-      console.log(`Saving PDF: ${filename}`);
       doc.save(filename);
-      console.log('PDF export completed successfully');
 
     } catch (error) {
       console.error('PDF export error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      const errorStack = error instanceof Error ? error.stack : '';
-      console.error('Error stack:', errorStack);
-      alert(`Error al exportar a PDF: ${errorMessage}`);
+      alert(`Error al exportar a PDF: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   };
 
