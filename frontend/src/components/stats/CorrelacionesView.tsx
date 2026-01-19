@@ -632,6 +632,20 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
   // =====================================================
   // EXPORT FUNCTIONS
   // =====================================================
+  const getExportVariables = (
+    matrixData?: Record<string, Record<string, unknown>>
+  ): string[] => {
+    if (!matrixData) {
+      return [];
+    }
+
+    const matrixVariables = Object.keys(matrixData);
+    if (correlationData?.analyzed_columns?.length) {
+      return correlationData.analyzed_columns.filter((variable) => matrixVariables.includes(variable));
+    }
+
+    return matrixVariables;
+  };
 
   // Export to Excel with academic styling (matching UI)
   const handleExportExcel = () => {
@@ -641,7 +655,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
       return;
     }
 
-    if (selectedVars.length < 2) {
+    if (correlationData.analyzed_columns?.length && correlationData.analyzed_columns.length < 2) {
       alert('Selecciona al menos 2 variables para exportar.');
       return;
     }
@@ -671,10 +685,15 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
         if (!matrixData) continue;
 
+        const exportVariables = getExportVariables(matrixData);
+        if (exportVariables.length < 2) {
+          continue;
+        }
+
         // Create worksheet using cell-by-cell construction
         const ws: XLSX.WorkSheet = {};
         let rowNum = 0;
-        const numCols = selectedVars.length + 1; // Variable column + data columns
+        const numCols = exportVariables.length + 1; // Variable column + data columns
 
         // Row 0: Title
         ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
@@ -702,7 +721,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           s: excelStyles.header
         };
 
-        selectedVars.forEach((variable, colIdx) => {
+        exportVariables.forEach((variable, colIdx) => {
           ws[XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 })] = {
             v: variable,
             t: 's',
@@ -712,8 +731,8 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         rowNum++;
 
         // Data rows
-        for (let rowIdx = 0; rowIdx < selectedVars.length; rowIdx++) {
-          const rowVar = selectedVars[rowIdx];
+        for (let rowIdx = 0; rowIdx < exportVariables.length; rowIdx++) {
+          const rowVar = exportVariables[rowIdx];
 
           // First column: Variable name
           ws[XLSX.utils.encode_cell({ r: rowNum, c: 0 })] = {
@@ -723,8 +742,8 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
           };
 
           // Data columns
-          for (let colIdx = 0; colIdx < selectedVars.length; colIdx++) {
-            const colVar = selectedVars[colIdx];
+          for (let colIdx = 0; colIdx < exportVariables.length; colIdx++) {
+            const colVar = exportVariables[colIdx];
             const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: colIdx + 1 });
             const isDiagonal = rowIdx === colIdx;
 
@@ -796,7 +815,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         // Set column widths
         ws['!cols'] = [
           { wch: 25 }, // Variable column wider
-          ...selectedVars.map(() => ({ wch: 15 })) // Data columns
+          ...exportVariables.map(() => ({ wch: 15 })) // Data columns
         ];
 
         // Set row heights to accommodate multi-line cells
@@ -810,7 +829,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         rowHeights[headerRowIdx] = { hpt: 30 };
 
         // Data rows (need more height for 3 lines)
-        for (let i = 0; i < selectedVars.length; i++) {
+        for (let i = 0; i < exportVariables.length; i++) {
           rowHeights[headerRowIdx + 1 + i] = { hpt: 55 };
         }
 
@@ -848,7 +867,7 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
       return;
     }
 
-    if (selectedVars.length < 2) {
+    if (correlationData.analyzed_columns?.length && correlationData.analyzed_columns.length < 2) {
       alert('Selecciona al menos 2 variables para exportar.');
       return;
     }
@@ -858,7 +877,25 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
 
-      const isLandscape = selectedVars.length > 4;
+      // Methods to export
+      const methodsToExport: Array<'pearson' | 'spearman' | 'kendall'> =
+        method === 'comparar_todos'
+          ? ['pearson', 'spearman', 'kendall']
+          : [method as 'pearson' | 'spearman' | 'kendall'];
+
+      const firstMatrixVariables = (() => {
+        for (const currentMethod of methodsToExport) {
+          const matrixData = correlationData?.tables?.[activeSegmentTab]?.[currentMethod]?.matrix;
+          const variables = getExportVariables(matrixData);
+          if (variables.length > 0) {
+            return variables;
+          }
+        }
+
+        return correlationData.analyzed_columns ?? [];
+      })();
+
+      const isLandscape = firstMatrixVariables.length > 4;
       const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait' });
       const pageWidth = doc.internal.pageSize.getWidth();
       let yPos = 20;
@@ -885,17 +922,11 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
       doc.setFontSize(9);
       doc.setTextColor(71, 85, 105); // Slate-600
       doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}`, 18, yPos + 7);
-      doc.text(`Variables: ${selectedVars.join(' • ')}`, 18, yPos + 14);
+      doc.text(`Variables: ${firstMatrixVariables.join(' • ')}`, 18, yPos + 14);
       if (segmentBy) {
         doc.text(`Segmento: ${activeSegmentTab}`, pageWidth - 60, yPos + 7);
       }
       yPos += 30;
-
-      // Methods to export
-      const methodsToExport: Array<'pearson' | 'spearman' | 'kendall'> =
-        method === 'comparar_todos'
-          ? ['pearson', 'spearman', 'kendall']
-          : [method as 'pearson' | 'spearman' | 'kendall'];
 
       const methodLabelsMap: Record<string, string> = {
         pearson: 'Coeficiente de Pearson (r)',
@@ -913,6 +944,11 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
         if (!matrixData) continue;
 
+        const exportVariables = getExportVariables(matrixData);
+        if (exportVariables.length < 2) {
+          continue;
+        }
+
         // Method title
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
@@ -921,13 +957,13 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
         yPos += 6;
 
         // Build table data
-        const tableHead = ['Variable', ...selectedVars];
+        const tableHead = ['Variable', ...exportVariables];
         const tableBody: string[][] = [];
 
-        for (const rowVar of selectedVars) {
+        for (const rowVar of exportVariables) {
           const row: string[] = [rowVar];
 
-          for (const colVar of selectedVars) {
+          for (const colVar of exportVariables) {
             const pairData = matrixData?.[rowVar]?.[colVar];
             const isDiagonal = rowVar === colVar;
 
