@@ -562,13 +562,20 @@ El usuario ha sido transferido al chat principal. Mantén este contexto en memor
 
   // Exportar a PDF
   const handleExportPDF = async () => {
-    if (!normalizedTableData || !currentTable) return;
+    if (!normalizedTableData || !currentTable) {
+      alert('No hay datos para exportar');
+      return;
+    }
 
-    // Importación dinámica de jspdf y autotable
-    const { default: jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
+    try {
+      // Importación dinámica de jspdf y autotable
+      const jsPDFModule = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
 
-    const doc = new jsPDF();
+      const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF;
+      const autoTable = autoTableModule.default;
+
+      const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     let yPos = 20;
 
@@ -705,8 +712,12 @@ El usuario ha sido transferido al chat principal. Mantén este contexto en memor
       }
     });
 
-    const fileName = `Tabla_Contingencia_${String(rowVar)}_x_${String(colVar)}${segmentBy ? `_por_${String(segmentBy)}` : ''}.pdf`;
-    doc.save(fileName);
+      const fileName = `Tabla_Contingencia_${String(rowVar)}_x_${String(colVar)}${segmentBy ? `_por_${String(segmentBy)}` : ''}.pdf`;
+      doc.save(fileName);
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      alert('Error al exportar a PDF. Por favor, intenta de nuevo.');
+    }
   };
 
   const metrics = [
