@@ -11,7 +11,24 @@ export default defineConfig({
       // PERFORMANCE OPTIMIZATION: Removed unnecessary package version aliases
       // that can prevent tree-shaking. Only keeping the src alias.
       '@': path.resolve(__dirname, './src'),
+      // Browser compatibility: Polyfills for Node.js modules
+      'stream': path.resolve(__dirname, './src/polyfills/stream.js'),
+      'fs': path.resolve(__dirname, './src/polyfills/fs.js'),
+      'path': path.resolve(__dirname, './src/polyfills/path.js'),
+      'crypto': path.resolve(__dirname, './src/polyfills/crypto.js'),
     },
+  },
+  define: {
+    // Define global variables for browser compatibility
+    'process.env': {},
+    'global': 'globalThis',
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: {
+        global: 'globalThis'
+      }
+    }
   },
   build: {
     target: 'esnext',
