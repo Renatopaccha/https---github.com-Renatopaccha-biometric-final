@@ -330,13 +330,20 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
 
   // Exportar a PDF
   const handleExportPDF = async () => {
-    if (segments.length === 0) return;
+    if (segments.length === 0) {
+      alert('No hay datos para exportar');
+      return;
+    }
 
-    // Importación dinámica de jspdf y autotable
-    const { default: jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
+    try {
+      // Importación dinámica de jspdf y autotable
+      const jsPDFModule = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
 
-    const doc = new jsPDF();
+      const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF;
+      const autoTable = autoTableModule.default;
+
+      const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     let yPos = 20;
 
@@ -437,7 +444,11 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
       yPos += 5;
     }
 
-    doc.save(`Tablas_Frecuencia${segmentBy ? `_por_${segmentBy}` : ''}.pdf`);
+      doc.save(`Tablas_Frecuencia${segmentBy ? `_por_${segmentBy}` : ''}.pdf`);
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      alert('Error al exportar a PDF. Por favor, intenta de nuevo.');
+    }
   };
 
   // Verificar si hay datos para habilitar acciones
