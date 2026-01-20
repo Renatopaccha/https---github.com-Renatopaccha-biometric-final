@@ -874,8 +874,11 @@ El usuario ha sido transferido al chat principal desde el módulo de correlacion
 
     try {
       // Dynamic imports
-      const { default: jsPDF } = await import('jspdf');
-      const { default: autoTable } = await import('jspdf-autotable');
+      const jsPDFModule = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
+
+      const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF;
+      const autoTable = autoTableModule.default;
 
       // Methods to export
       const methodsToExport: Array<'pearson' | 'spearman' | 'kendall'> =

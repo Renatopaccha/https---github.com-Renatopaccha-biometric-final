@@ -129,118 +129,138 @@ export function TablaResumenView({ onBack, onNavigateToChat }: TablaResumenViewP
 
   // Función para exportar a Excel usando xlsx
   const handleExportExcel = () => {
-    if (data.length === 0) return;
+    if (data.length === 0) {
+      alert('No hay datos para exportar');
+      return;
+    }
 
-    // Transformar datos a formato legible para Excel con encabezados en español
-    const excelData = data.map((row: SummaryStatRow) => ({
-      'Variable': row.variable,
-      'Tipo': row.is_binary ? 'Binaria (Si/No)' : 'Numérica',
-      'N': row.n,
-      'Media / Prevalencia': row.is_binary
-        ? (row.media !== null ? `${(row.media * 100).toFixed(1)}%` : '-')
-        : row.media,
-      'Mediana': row.is_binary ? '-' : row.mediana,
-      'Desviación Estándar': row.is_binary ? '-' : row.desvio_estandar,
-      'Mínimo': row.is_binary ? '-' : row.minimo,
-      'Máximo': row.is_binary ? '-' : row.maximo,
-      'Q1 (25%)': row.is_binary ? '-' : row.q1,
-      'Q3 (75%)': row.is_binary ? '-' : row.q3,
-      'Nulos': Math.max(0, totalRows - row.n),
-    }));
+    try {
+      // Transformar datos a formato legible para Excel con encabezados en español
+      const excelData = data.map((row: SummaryStatRow) => ({
+        'Variable': row.variable,
+        'Tipo': row.is_binary ? 'Binaria (Si/No)' : 'Numérica',
+        'N': row.n,
+        'Media / Prevalencia': row.is_binary
+          ? (row.media !== null ? `${(row.media * 100).toFixed(1)}%` : '-')
+          : (row.media !== null ? row.media : '-'),
+        'Mediana': row.is_binary ? '-' : (row.mediana !== null ? row.mediana : '-'),
+        'Desviación Estándar': row.is_binary ? '-' : (row.desvio_estandar !== null ? row.desvio_estandar : '-'),
+        'Mínimo': row.is_binary ? '-' : (row.minimo !== null ? row.minimo : '-'),
+        'Máximo': row.is_binary ? '-' : (row.maximo !== null ? row.maximo : '-'),
+        'Q1 (25%)': row.is_binary ? '-' : (row.q1 !== null ? row.q1 : '-'),
+        'Q3 (75%)': row.is_binary ? '-' : (row.q3 !== null ? row.q3 : '-'),
+        'Nulos': Math.max(0, totalRows - row.n),
+      }));
 
-    // Crear worksheet desde los datos
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
+      // Crear worksheet desde los datos
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
 
-    // Ajustar anchos de columna para mejor visualización
-    worksheet['!cols'] = [
-      { wch: 25 }, // Variable
-      { wch: 16 }, // Tipo
-      { wch: 10 }, // N
-      { wch: 12 }, // Media
-      { wch: 12 }, // Mediana
-      { wch: 18 }, // Desviación Estándar
-      { wch: 12 }, // Mínimo
-      { wch: 12 }, // Máximo
-      { wch: 12 }, // Q1
-      { wch: 12 }, // Q3
-      { wch: 10 }, // Nulos
-    ];
+      // Ajustar anchos de columna para mejor visualización
+      worksheet['!cols'] = [
+        { wch: 25 }, // Variable
+        { wch: 16 }, // Tipo
+        { wch: 10 }, // N
+        { wch: 18 }, // Media
+        { wch: 12 }, // Mediana
+        { wch: 18 }, // Desviación Estándar
+        { wch: 12 }, // Mínimo
+        { wch: 12 }, // Máximo
+        { wch: 12 }, // Q1
+        { wch: 12 }, // Q3
+        { wch: 10 }, // Nulos
+      ];
 
-    // Crear workbook y agregar la hoja
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumen Estadístico');
+      // Crear workbook y agregar la hoja
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Resumen Estadístico');
 
-    // Descargar el archivo .xlsx
-    XLSX.writeFile(workbook, 'Resumen_Estadistico.xlsx');
+      // Descargar el archivo .xlsx
+      XLSX.writeFile(workbook, 'Resumen_Estadistico.xlsx');
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
+      alert('Error al exportar a Excel. Por favor, intenta de nuevo.');
+    }
   };
 
   // Exportar a PDF
   const handleExportPDF = async () => {
-    if (data.length === 0) return;
+    if (data.length === 0) {
+      alert('No hay datos para exportar');
+      return;
+    }
 
-    const { default: jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
+    try {
+      const jsPDFModule = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
 
-    const doc = new jsPDF({ orientation: 'landscape' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let yPos = 20;
+      // jsPDF 2.x exports as default, but we need to handle both cases
+      const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF;
+      const autoTable = autoTableModule.default;
 
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Resumen Estadístico', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
+      const doc = new jsPDF({ orientation: 'landscape' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let yPos = 20;
 
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 10;
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Resumen Estadístico', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 8;
 
-    const tableData = data.map((row) => {
-      const completeness = totalRows > 0 ? `${((row.n / totalRows) * 100).toFixed(1)}%` : '-';
-      const distribution = row.is_binary
-        ? 'N/A'
-        : row.is_normal === null
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 10;
+
+      const tableData = data.map((row) => {
+        const completeness = totalRows > 0 ? `${((row.n / totalRows) * 100).toFixed(1)}%` : '-';
+        const distribution = row.is_binary
           ? 'N/A'
-          : row.is_normal
-            ? 'Normal'
-            : 'Asimétrica';
+          : row.is_normal === null
+            ? 'N/A'
+            : row.is_normal
+              ? 'Normal'
+              : 'Asimétrica';
 
-      return [
-        row.variable,
-        completeness,
-        distribution,
-        row.n.toString(),
-        row.is_binary ? formatPrevalence(row.media) : formatNumber(row.media),
-        row.is_binary ? '-' : formatNumber(row.mediana),
-        row.is_binary ? '-' : formatNumber(row.desvio_estandar),
-        row.is_binary ? '-' : formatNumber(row.minimo),
-        row.is_binary ? '-' : formatNumber(row.maximo)
-      ];
-    });
+        return [
+          row.variable,
+          completeness,
+          distribution,
+          row.n.toString(),
+          row.is_binary ? formatPrevalence(row.media) : formatNumber(row.media),
+          row.is_binary ? '-' : formatNumber(row.mediana),
+          row.is_binary ? '-' : formatNumber(row.desvio_estandar),
+          row.is_binary ? '-' : formatNumber(row.minimo),
+          row.is_binary ? '-' : formatNumber(row.maximo)
+        ];
+      });
 
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Variable', 'Completitud', 'Distribución', 'N', 'Media', 'Mediana', 'Desv. Estándar', 'Mín', 'Máx']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [243, 244, 246],
-        textColor: [31, 41, 55],
-        lineColor: [209, 213, 219],
-        lineWidth: 0.1,
-        fontStyle: 'bold'
-      },
-      bodyStyles: {
-        lineColor: [209, 213, 219],
-        lineWidth: 0.1,
-        textColor: [55, 65, 81]
-      },
-      alternateRowStyles: { fillColor: [255, 255, 255] },
-      margin: { left: 14, right: 14 },
-      styles: { fontSize: 8, cellPadding: 2 }
-    });
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Variable', 'Completitud', 'Distribución', 'N', 'Media', 'Mediana', 'Desv. Estándar', 'Mín', 'Máx']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [243, 244, 246],
+          textColor: [31, 41, 55],
+          lineColor: [209, 213, 219],
+          lineWidth: 0.1,
+          fontStyle: 'bold'
+        },
+        bodyStyles: {
+          lineColor: [209, 213, 219],
+          lineWidth: 0.1,
+          textColor: [55, 65, 81]
+        },
+        alternateRowStyles: { fillColor: [255, 255, 255] },
+        margin: { left: 14, right: 14 },
+        styles: { fontSize: 8, cellPadding: 2 }
+      });
 
-    doc.save('Resumen_Estadistico.pdf');
+      doc.save('Resumen_Estadistico.pdf');
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      alert('Error al exportar a PDF. Por favor, intenta de nuevo.');
+    }
   };
 
   const handleAIInterpretation = async () => {
