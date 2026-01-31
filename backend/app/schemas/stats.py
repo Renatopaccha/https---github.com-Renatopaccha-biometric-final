@@ -31,7 +31,9 @@ class DispersionStats(BaseModel):
     
     std_dev: Optional[float] = Field(None, description="Desviación estándar (ddof=1)")
     variance: Optional[float] = Field(None, description="Varianza muestral")
-    range: Optional[float] = Field(None, description="Rango (max - min)")
+    min: Optional[float] = Field(None, description="Valor mínimo")
+    max: Optional[float] = Field(None, description="Valor máximo")
+    range: Optional[float] = Field(None, description="Rango/Recorrido (max - min)")
     iqr: Optional[float] = Field(None, description="Rango intercuartílico (Q3 - Q1)")
     cv: Optional[float] = Field(None, description="Coeficiente de variación (%)")
     sem: Optional[float] = Field(None, description="Error estándar de la media (crucial para medicina)")

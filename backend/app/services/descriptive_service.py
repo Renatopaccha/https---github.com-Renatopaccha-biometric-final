@@ -242,7 +242,15 @@ def calculate_smart_table_stats(
         # =====================================================================
         std_val = _safe_float(clean.std(ddof=1)) if n > 1 else None
         variance_val = _safe_float(clean.var(ddof=1)) if n > 1 else None
-        range_val = _safe_float(clean.max() - clean.min()) if n > 0 else None
+        
+        # Mínimo y Máximo
+        min_val = _safe_float(clean.min()) if n > 0 else None
+        max_val = _safe_float(clean.max()) if n > 0 else None
+        
+        # Recorrido/Rango: Max - Min (solo si ambos son válidos)
+        range_val = None
+        if min_val is not None and max_val is not None:
+            range_val = _safe_float(max_val - min_val)
         
         q1 = _safe_float(clean.quantile(0.25)) if n > 0 else None
         q3 = _safe_float(clean.quantile(0.75)) if n > 0 else None
@@ -261,6 +269,8 @@ def calculate_smart_table_stats(
         dispersion = DispersionStats(
             std_dev=std_val,
             variance=variance_val,
+            min=min_val,
+            max=max_val,
             range=range_val,
             iqr=iqr_val,
             cv=cv_val,

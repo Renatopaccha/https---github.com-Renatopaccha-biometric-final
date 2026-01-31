@@ -109,7 +109,9 @@ const STAT_TOOLTIPS: Record<string, string> = {
   geometric_mean: "Media geométrica - útil para promediar tasas de cambio. Solo definida para valores positivos (>0)",
   std_dev: "Medida de dispersión. Un valor bajo indica datos cercanos a la media",
   variance: "Cuadrado de la desviación estándar",
-  range: "Diferencia entre el valor máximo y mínimo",
+  min: "Valor más pequeño observado en la variable",
+  max: "Valor más grande observado en la variable",
+  range: "Recorrido estadístico: diferencia entre el valor máximo y mínimo (Max - Min)",
   iqr: "Rango entre el percentil 25 y 75. Útil para detectar outliers",
   cv: "Desviación estándar relativa a la media (%). Permite comparar variabilidad entre variables",
   sem: "Error estándar de la media. Crucial en investigación médica para estimar la precisión de la media muestral",
@@ -155,8 +157,10 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   const [dispersion, setDispersion] = useState({
     desvTipica: true,
     varianza: false,
-    coefVariacion: true,
+    minimo: false,
+    maximo: false,
     recorrido: false,
+    coefVariacion: true,
     rangoIntercuartilico: true,
     errorEstMedia: true,
   });
@@ -381,8 +385,10 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                   {[
                     { key: 'desvTipica', label: 'Desviación Típica', state: dispersion.desvTipica, setter: (v: boolean) => setDispersion({ ...dispersion, desvTipica: v }) },
                     { key: 'varianza', label: 'Varianza', state: dispersion.varianza, setter: (v: boolean) => setDispersion({ ...dispersion, varianza: v }) },
+                    { key: 'minimo', label: 'Mínimo', state: dispersion.minimo, setter: (v: boolean) => setDispersion({ ...dispersion, minimo: v }) },
+                    { key: 'maximo', label: 'Máximo', state: dispersion.maximo, setter: (v: boolean) => setDispersion({ ...dispersion, maximo: v }) },
+                    { key: 'recorrido', label: 'Recorrido (Rango)', state: dispersion.recorrido, setter: (v: boolean) => setDispersion({ ...dispersion, recorrido: v }) },
                     { key: 'coefVariacion', label: 'Coef. Variación (%)', state: dispersion.coefVariacion, setter: (v: boolean) => setDispersion({ ...dispersion, coefVariacion: v }) },
-                    { key: 'recorrido', label: 'Rango', state: dispersion.recorrido, setter: (v: boolean) => setDispersion({ ...dispersion, recorrido: v }) },
                     { key: 'rangoIntercuartilico', label: 'Rango Intercuartílico', state: dispersion.rangoIntercuartilico, setter: (v: boolean) => setDispersion({ ...dispersion, rangoIntercuartilico: v }) },
                     { key: 'errorEstMedia', label: 'Error Est. Media (SEM)', state: dispersion.errorEstMedia, setter: (v: boolean) => setDispersion({ ...dispersion, errorEstMedia: v }) },
                   ].map(({ key, label, state, setter }) => (
@@ -636,13 +642,14 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                       )}
 
                     {/* === DISPERSIÓN === */}
-                    {(dispersion.desvTipica || dispersion.varianza || dispersion.coefVariacion ||
-                      dispersion.recorrido || dispersion.rangoIntercuartilico || dispersion.errorEstMedia) && (
+                    {(dispersion.desvTipica || dispersion.varianza || dispersion.minimo ||
+                      dispersion.maximo || dispersion.recorrido || dispersion.coefVariacion ||
+                      dispersion.rangoIntercuartilico || dispersion.errorEstMedia) && (
                         <>
-                          <tr className="bg-gray-100">
+                          <tr className="bg-indigo-50">
                             <td
                               colSpan={selectedVars.length + 1}
-                              className="px-6 py-2 text-xs font-bold text-gray-700 uppercase tracking-wider"
+                              className="px-6 py-2 text-xs font-bold text-indigo-700 uppercase tracking-wider"
                               style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                             >
                               Dispersión
@@ -675,6 +682,54 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                                 return (
                                   <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
                                     {formatValue(stats?.dispersion.variance)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          )}
+
+                          {dispersion.minimo && (
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Mínimo', 'min', <span>Mínimo</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.min)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          )}
+
+                          {dispersion.maximo && (
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Máximo', 'max', <span>Máximo</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.max)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          )}
+
+                          {dispersion.recorrido && (
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Recorrido', 'range', <span>Recorrido (Max - Min)</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.range)}
                                   </td>
                                 );
                               })}
@@ -847,10 +902,10 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                     {/* === FORMA Y DISTRIBUCIÓN === */}
                     {(formaDistribucion.asimetria || formaDistribucion.curtosis || formaDistribucion.pruebaNormalidad) && (
                       <>
-                        <tr className="bg-yellow-50">
+                        <tr className="bg-amber-50">
                           <td
                             colSpan={selectedVars.length + 1}
-                            className="px-6 py-2 text-xs font-bold text-yellow-700 uppercase tracking-wider"
+                            className="px-6 py-2 text-xs font-bold text-amber-700 uppercase tracking-wider"
                             style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                           >
                             Forma y Distribución

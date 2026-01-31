@@ -25,7 +25,9 @@ export interface CentralTendencyStats {
 export interface DispersionStats {
     std_dev: number | null;
     variance: number | null;
-    range: number | null;
+    min: number | null;      // Minimum value
+    max: number | null;      // Maximum value  
+    range: number | null;    // Range (max - min) - "Recorrido" in UI
     iqr: number | null;
     cv: number | null;  // Coefficient of Variation (%)
     sem: number | null; // Standard Error of the Mean
