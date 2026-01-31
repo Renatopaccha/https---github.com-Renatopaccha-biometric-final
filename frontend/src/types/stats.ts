@@ -4,6 +4,88 @@
  */
 
 // =============================================================================
+// SMART TABLE - Nested 4-Category Structure
+// =============================================================================
+
+/**
+ * Central Tendency Statistics
+ */
+export interface CentralTendencyStats {
+    mean: number | null;
+    median: number | null;
+    mode: number | number[] | null;
+    trimmed_mean_5: number | null;
+    sum: number | null;
+    geometric_mean: number | null;
+}
+
+/**
+ * Dispersion Statistics
+ */
+export interface DispersionStats {
+    std_dev: number | null;
+    variance: number | null;
+    range: number | null;
+    iqr: number | null;
+    cv: number | null;  // Coefficient of Variation (%)
+    sem: number | null; // Standard Error of the Mean
+}
+
+/**
+ * Percentile Statistics
+ */
+export interface PercentileStats {
+    q1: number | null;
+    q3: number | null;
+    p5: number | null;
+    p95: number | null;
+    deciles: Record<string, number> | null;  // {"10": 28.8, "20": 32.4, ...}
+}
+
+/**
+ * Shape Statistics (Distribution Form)
+ */
+export interface ShapeStats {
+    skewness: number | null;
+    kurtosis: number | null;
+    normality_test: string;  // "Normal" | "No Normal" | "Indeterminado"
+    normality_p_value: number | null;
+    test_used: string | null;  // "Shapiro-Wilk" | "Kolmogorov-Smirnov"
+}
+
+/**
+ * Complete column statistics in nested 4-category structure
+ */
+export interface SmartTableColumnStats {
+    variable: string;
+    n: number;
+    missing: number;
+    central_tendency: CentralTendencyStats;
+    dispersion: DispersionStats;
+    percentiles: PercentileStats;
+    shape: ShapeStats;
+}
+
+/**
+ * Smart Table API Request
+ */
+export interface SmartTableRequest {
+    session_id: string;
+    columns?: string[] | null;
+}
+
+/**
+ * Smart Table API Response
+ */
+export interface SmartTableResponse {
+    success: boolean;
+    message: string;
+    session_id: string;
+    analyzed_columns: string[];
+    statistics: Record<string, SmartTableColumnStats>;
+}
+
+// =============================================================================
 // ADVANCED ANALYSIS TYPES
 // =============================================================================
 
@@ -68,6 +150,11 @@ export interface ColumnStatistics {
     cv: number | null;
     range: number | null;
     ci_95: ConfidenceInterval | null;
+
+    // New metrics (synced with backend)
+    sum: number | null;
+    geometric_mean: number | null;
+    mode: number | number[] | null;  // Can be single value or multimodal array
 
     // Additional percentiles
     p5: number | null;

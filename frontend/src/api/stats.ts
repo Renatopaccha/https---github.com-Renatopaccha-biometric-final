@@ -10,6 +10,8 @@ import type {
     FrequencyResponse,
     ContingencyTableRequest,
     ContingencyTableResponse,
+    SmartTableRequest,
+    SmartTableResponse,
 } from '../types/stats';
 
 // Backend base URL - adjust according to your environment
@@ -196,3 +198,43 @@ export async function getCrosstabStats(
 }
 
 
+/**
+ * Fetch Smart Table statistics with nested 4-category structure
+ * 
+ * @param sessionId - Dataset session identifier  
+ * @param columns - Optional array of numeric column names to analyze
+ * @returns Promise with SmartTableResponse containing nested statistics
+ * 
+ * Categories returned:
+ * - central_tendency: mean, median, mode, trimmed_mean_5
+ * - dispersion: std_dev, variance, range, iqr, cv, sem
+ * - percentiles: q1, q3, p5, p95, deciles
+ * - shape: skewness, kurtosis, normality_test, normality_p_value, test_used
+ */
+export async function getSmartTableStats(
+    sessionId: string,
+    columns?: string[]
+): Promise<SmartTableResponse> {
+    const requestBody: SmartTableRequest = {
+        session_id: sessionId,
+        columns: columns ?? null,
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/stats/smart-table`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+            detail: 'Unknown error occurred',
+        }));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    const data: SmartTableResponse = await response.json();
+    return data;
+}

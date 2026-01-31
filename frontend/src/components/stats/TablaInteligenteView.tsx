@@ -1,100 +1,188 @@
-import { ArrowLeft, ChevronDown } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { ArrowLeft, ChevronDown, Info, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ActionToolbar } from './ActionToolbar';
+import { getSmartTableStats } from '../../api/stats';
+import { useDataContext } from '../../context/DataContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../ui/tooltip';
+import type { SmartTableColumnStats, SmartTableResponse } from '../../types/stats';
 
 interface TablaInteligenteViewProps {
   onBack: () => void;
 }
 
-const numericVariables = [
-  'FormularioN°',
-  'Edad (años cumpl)',
-  'Peso [Kg]',
-  'Talla (cm)',
-  'Talla (m)',
-  'IMC',
-  'Glucosa [mg/dL]',
-  'Presión Arterial [mmHg]',
-  'Colesterol [mg/dL]'
-];
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
 
-// Mock statistical data - now includes all possible statistics
-const generateRowData = (variable: string) => ({
-  variable,
-  n: 5594,
-  media: Math.random() * 100 + 20,
-  mediana: Math.random() * 100 + 20,
-  moda: Math.random() * 100 + 20,
-  suma: Math.random() * 10000 + 1000,
-  mediaGeometrica: Math.random() * 100 + 20,
-  ic95Media: `[${(Math.random() * 100 + 20).toFixed(2)}, ${(Math.random() * 100 + 40).toFixed(2)}]`,
-  desvTipica: Math.random() * 15 + 5,
-  varianza: Math.random() * 200 + 20,
-  coefVariacion: Math.random() * 30 + 10,
-  minimo: Math.random() * 20 + 1,
-  maximo: Math.random() * 100 + 80,
-  recorrido: Math.random() * 80 + 50,
-  rangoIntercuartilico: Math.random() * 20 + 10,
-  errorEstMedia: Math.random() * 2 + 0.5,
-  q25: Math.random() * 50 + 20,
-  q50: Math.random() * 60 + 30,
-  q75: Math.random() * 80 + 50,
-  d10: Math.random() * 30 + 10,
-  d20: Math.random() * 40 + 15,
-  d30: Math.random() * 50 + 20,
-  d40: Math.random() * 55 + 25,
-  d60: Math.random() * 70 + 40,
-  d70: Math.random() * 75 + 45,
-  d80: Math.random() * 85 + 55,
-  d90: Math.random() * 95 + 70,
-  percentiles: '5: 22.5, 95: 89.3, 99: 95.2',
-  asimetria: (Math.random() - 0.5) * 2,
-  curtosis: (Math.random() - 0.5) * 2,
-  pruebaNormalidad: Math.random() * 0.5
-});
+/**
+ * Formats a numeric value for display (APA standard: 2-3 decimal places)
+ * Handles null, undefined, NaN, and Infinity
+ */
+function formatValue(value: number | null | undefined, decimals: number = 2): string {
+  if (value === null || value === undefined) return '-';
+  if (typeof value !== 'number' || !isFinite(value)) return '-';
+  return value.toFixed(decimals);
+}
+
+/**
+ * Formats mode value (can be single value or array)
+ */
+function formatMode(mode: number | number[] | null | undefined): string {
+  if (mode === null || mode === undefined) return '-';
+  if (Array.isArray(mode)) {
+    if (mode.length === 0) return '-';
+    if (mode.length > 3) return `${mode.slice(0, 3).map(m => formatValue(m)).join(', ')}...`;
+    return mode.map(m => formatValue(m)).join(', ');
+  }
+  return formatValue(mode);
+}
+
+/**
+ * Gets normality badge style based on test result
+ */
+function getNormalityBadge(testResult: string): { bg: string; text: string; label: string } {
+  switch (testResult) {
+    case 'Normal':
+      return { bg: 'bg-green-100', text: 'text-green-800', label: 'Normal' };
+    case 'No Normal':
+      return { bg: 'bg-red-100', text: 'text-red-800', label: 'No Normal' };
+    default:
+      return { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Indeterminado' };
+  }
+}
+
+// =============================================================================
+// SKELETON COMPONENT
+// =============================================================================
+
+function TableSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <div className="animate-pulse">
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-blue-50 to-indigo-50 border-b border-slate-200">
+          <div className="h-6 bg-slate-200 rounded w-48"></div>
+        </div>
+        <div className="p-4">
+          <table className="w-full">
+            <thead>
+              <tr>
+                {Array.from({ length: cols }).map((_, i) => (
+                  <th key={i} className="px-4 py-3">
+                    <div className="h-4 bg-slate-200 rounded"></div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: rows }).map((_, rowIdx) => (
+                <tr key={rowIdx} className="border-b border-slate-100">
+                  {Array.from({ length: cols }).map((_, colIdx) => (
+                    <td key={colIdx} className="px-4 py-3">
+                      <div className="h-4 bg-slate-100 rounded"></div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// TOOLTIP DEFINITIONS
+// =============================================================================
+
+const STAT_TOOLTIPS: Record<string, string> = {
+  mean: "Promedio aritmético de todos los valores",
+  median: "Valor central cuando los datos están ordenados",
+  mode: "Valor(es) que aparece(n) con mayor frecuencia",
+  trimmed_mean_5: "Media calculada eliminando el 5% de valores extremos de cada lado",
+  sum: "Suma total de todos los valores de la variable",
+  geometric_mean: "Media geométrica - útil para promediar tasas de cambio. Solo definida para valores positivos (>0)",
+  std_dev: "Medida de dispersión. Un valor bajo indica datos cercanos a la media",
+  variance: "Cuadrado de la desviación estándar",
+  range: "Diferencia entre el valor máximo y mínimo",
+  iqr: "Rango entre el percentil 25 y 75. Útil para detectar outliers",
+  cv: "Desviación estándar relativa a la media (%). Permite comparar variabilidad entre variables",
+  sem: "Error estándar de la media. Crucial en investigación médica para estimar la precisión de la media muestral",
+  q1: "25% de los datos están por debajo de este valor",
+  q3: "75% de los datos están por debajo de este valor",
+  p5: "5% de los datos están por debajo de este valor",
+  p95: "95% de los datos están por debajo de este valor",
+  skewness: "Mide la asimetría de la distribución. 0 = simétrica, >0 = cola derecha, <0 = cola izquierda",
+  kurtosis: "Mide la 'altura' de las colas. 0 = normal, >0 = colas pesadas, <0 = colas ligeras",
+  normality_test: "Test estadístico para verificar si los datos siguen una distribución normal. Shapiro-Wilk para n<50, Kolmogorov-Smirnov para n≥50"
+};
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 
 export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
-  const [selectedVars, setSelectedVars] = useState<string[]>(['Edad (años cumpl)', 'Peso [Kg]', 'IMC']);
-  const [segmentBy, setSegmentBy] = useState<string>('');
-  const [activeSegmentTab, setActiveSegmentTab] = useState<string>('General');
+  const { sessionId, columns: allColumns } = useDataContext();
+
+  // Use all columns as available variables (backend will validate which are numeric)
+  const availableVars = allColumns || [];
+
+  // Selected variables
+  const [selectedVars, setSelectedVars] = useState<string[]>([]);
   const [showVarsDropdown, setShowVarsDropdown] = useState(false);
 
-  const varsRef = useRef<HTMLDivElement>(null);
+  // Data state
+  const [data, setData] = useState<SmartTableResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Statistics selection state
   const [tendenciaCentral, setTendenciaCentral] = useState({
     n: true,
     media: true,
-    mediana: false,
+    mediana: true,
     moda: false,
+    trimmed_mean_5: false,
     suma: false,
-    mediaGeometrica: false,
-    ic95Media: true
+    media_geometrica: false,
   });
 
   const [dispersion, setDispersion] = useState({
     desvTipica: true,
     varianza: false,
     coefVariacion: true,
-    minimo: false,
-    maximo: false,
     recorrido: false,
-    rangoIntercuartilico: false,
-    errorEstMedia: false
+    rangoIntercuartilico: true,
+    errorEstMedia: true,
   });
 
   const [percentiles, setPercentiles] = useState({
-    cuartiles: false,
+    cuartiles: true,
+    p5_p95: false,
     deciles: false,
-    personalizados: false
   });
 
   const [formaDistribucion, setFormaDistribucion] = useState({
     asimetria: false,
     curtosis: false,
-    pruebaNormalidad: true
+    pruebaNormalidad: true,
   });
 
+  const varsRef = useRef<HTMLDivElement>(null);
+
+  // Auto-select first 3 variables on mount
+  useEffect(() => {
+    if (availableVars.length > 0 && selectedVars.length === 0) {
+      setSelectedVars(availableVars.slice(0, Math.min(3, availableVars.length)));
+    }
+  }, [availableVars]);
+
+  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (varsRef.current && !varsRef.current.contains(event.target as Node)) {
@@ -106,79 +194,64 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Fetch data when variables change
+  const fetchData = useCallback(async () => {
+    if (!sessionId || selectedVars.length === 0) {
+      setData(null);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await getSmartTableStats(sessionId, selectedVars);
+      setData(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cargar estadísticas');
+      console.error('Smart Table fetch error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sessionId, selectedVars]);
+
+  // Debounce fetch
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchData]);
+
   const toggleVariable = (variable: string) => {
     setSelectedVars(prev =>
       prev.includes(variable) ? prev.filter(v => v !== variable) : [...prev, variable]
     );
   };
 
-  // Generate data for selected variables
-  const tableData = selectedVars.map(variable => generateRowData(variable));
-
-  // Build column list based on selected statistics
-  const getSelectedColumns = () => {
-    const columns: Array<{ key: string; label: string; category: string }> = [];
-    
-    // Always show Variable column
-    columns.push({ key: 'variable', label: 'Variable', category: 'base' });
-    
-    // Tendencia Central
-    if (tendenciaCentral.n) columns.push({ key: 'n', label: 'N', category: 'tendencia' });
-    if (tendenciaCentral.media) columns.push({ key: 'media', label: 'Media', category: 'tendencia' });
-    if (tendenciaCentral.mediana) columns.push({ key: 'mediana', label: 'Mediana', category: 'tendencia' });
-    if (tendenciaCentral.moda) columns.push({ key: 'moda', label: 'Moda', category: 'tendencia' });
-    if (tendenciaCentral.suma) columns.push({ key: 'suma', label: 'Suma', category: 'tendencia' });
-    if (tendenciaCentral.mediaGeometrica) columns.push({ key: 'mediaGeometrica', label: 'Media Geométrica', category: 'tendencia' });
-    if (tendenciaCentral.ic95Media) columns.push({ key: 'ic95Media', label: 'IC 95% (Media)', category: 'tendencia' });
-    
-    // Dispersión
-    if (dispersion.desvTipica) columns.push({ key: 'desvTipica', label: 'Desviación Típica', category: 'dispersion' });
-    if (dispersion.varianza) columns.push({ key: 'varianza', label: 'Varianza', category: 'dispersion' });
-    if (dispersion.coefVariacion) columns.push({ key: 'coefVariacion', label: 'Coef. Variación (%)', category: 'dispersion' });
-    if (dispersion.minimo) columns.push({ key: 'minimo', label: 'Mínimo', category: 'dispersion' });
-    if (dispersion.maximo) columns.push({ key: 'maximo', label: 'Máximo', category: 'dispersion' });
-    if (dispersion.recorrido) columns.push({ key: 'recorrido', label: 'Recorrido (Rango)', category: 'dispersion' });
-    if (dispersion.rangoIntercuartilico) columns.push({ key: 'rangoIntercuartilico', label: 'Rango Intercuartílico', category: 'dispersion' });
-    if (dispersion.errorEstMedia) columns.push({ key: 'errorEstMedia', label: 'Error Est. Media', category: 'dispersion' });
-    
-    // Percentiles
-    if (percentiles.cuartiles) {
-      columns.push({ key: 'q25', label: 'Q1 (25%)', category: 'percentiles' });
-      columns.push({ key: 'q50', label: 'Q2 (50%)', category: 'percentiles' });
-      columns.push({ key: 'q75', label: 'Q3 (75%)', category: 'percentiles' });
-    }
-    if (percentiles.deciles) {
-      columns.push({ key: 'd10', label: 'D1 (10%)', category: 'percentiles' });
-      columns.push({ key: 'd20', label: 'D2 (20%)', category: 'percentiles' });
-      columns.push({ key: 'd30', label: 'D3 (30%)', category: 'percentiles' });
-      columns.push({ key: 'd40', label: 'D4 (40%)', category: 'percentiles' });
-      columns.push({ key: 'd60', label: 'D6 (60%)', category: 'percentiles' });
-      columns.push({ key: 'd70', label: 'D7 (70%)', category: 'percentiles' });
-      columns.push({ key: 'd80', label: 'D8 (80%)', category: 'percentiles' });
-      columns.push({ key: 'd90', label: 'D9 (90%)', category: 'percentiles' });
-    }
-    if (percentiles.personalizados) columns.push({ key: 'percentiles', label: 'Percentiles (Pers.)', category: 'percentiles' });
-    
-    // Forma y Distribución
-    if (formaDistribucion.asimetria) columns.push({ key: 'asimetria', label: 'Asimetría', category: 'forma' });
-    if (formaDistribucion.curtosis) columns.push({ key: 'curtosis', label: 'Curtosis', category: 'forma' });
-    if (formaDistribucion.pruebaNormalidad) columns.push({ key: 'pruebaNormalidad', label: 'Prueba Normalidad (p)', category: 'forma' });
-    
-    return columns;
+  // Get statistics for a variable
+  const getStats = (variable: string): SmartTableColumnStats | null => {
+    if (!data?.statistics) return null;
+    return data.statistics[variable] || null;
   };
 
-  const columns = getSelectedColumns();
+  // Render tooltip wrapper
+  const withTooltip = (label: string, tooltipKey: string, children: React.ReactNode) => (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-1 cursor-help">
+            {children}
+            <Info className="w-3.5 h-3.5 text-slate-400 hover:text-teal-600 transition-colors" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-sm">
+          <p>{STAT_TOOLTIPS[tooltipKey] || label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 
-  const getCellValue = (row: any, columnKey: string) => {
-    const value = row[columnKey];
-    if (columnKey === 'variable') return value;
-    if (columnKey === 'n') return value;
-    if (columnKey === 'ic95Media' || columnKey === 'percentiles') return value;
-    if (typeof value === 'number') {
-      return value.toFixed(2);
-    }
-    return value;
-  };
 
   return (
     <div className="h-full flex flex-col bg-slate-50">
@@ -198,37 +271,41 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                 Tabla Inteligente
               </h2>
+              {isLoading && <Loader2 className="w-5 h-5 text-teal-600 animate-spin" />}
             </div>
             <p className="text-slate-600 leading-relaxed ml-4" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-              Configura exactamente qué métricas deseas calcular, al estilo de software estadístico profesional
+              Estadísticas descriptivas avanzadas con estructura de 4 categorías
             </p>
           </div>
         </div>
 
-        {/* Control Bars */}
-        <div className="ml-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Variables Selector */}
-            <div className="relative" ref={varsRef}>
-              <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                Seleccionar Variables
-              </label>
-              <button
-                onClick={() => setShowVarsDropdown(!showVarsDropdown)}
-                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm"
-                style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-              >
-                <span className="text-slate-700 flex-1 text-left">
-                  {selectedVars.length === 0 
-                    ? 'Seleccionar variables (Mín. 1)' 
-                    : `${selectedVars.length} variables seleccionadas`}
-                </span>
-                <ChevronDown className="w-4 h-4 text-slate-500" />
-              </button>
+        {/* Variable Selector */}
+        <div className="ml-4">
+          <div className="relative max-w-md" ref={varsRef}>
+            <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              Variables Numéricas a Analizar
+            </label>
+            <button
+              onClick={() => setShowVarsDropdown(!showVarsDropdown)}
+              className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm"
+              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+            >
+              <span className="text-slate-700 flex-1 text-left">
+                {selectedVars.length === 0
+                  ? 'Seleccionar variables (Mín. 1)'
+                  : `${selectedVars.length} variable(s) seleccionada(s)`}
+              </span>
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            </button>
 
-              {showVarsDropdown && (
-                <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
-                  {numericVariables.map((variable) => (
+            {showVarsDropdown && (
+              <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
+                {availableVars.length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-slate-500">
+                    No hay variables numéricas disponibles
+                  </div>
+                ) : (
+                  availableVars.map((variable) => (
                     <label
                       key={variable}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer"
@@ -241,31 +318,10 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                       />
                       <span className="text-sm text-slate-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{variable}</span>
                     </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Segment By */}
-            <div>
-              <label className="text-xs font-medium text-slate-700 mb-1.5 block flex items-center gap-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                Segmentar por (Opcional)
-              </label>
-              <select
-                value={segmentBy}
-                onChange={(e) => setSegmentBy(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"
-                style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-              >
-                <option value="">(General - Sin Segmentar)</option>
-                <option value="genero">Género</option>
-                <option value="grupo">Grupo Control</option>
-                <option value="estado">Estado de Salud</option>
-              </select>
-            </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -277,7 +333,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
           <div className="bg-white rounded-xl shadow-lg border border-slate-200">
             <div className="px-8 py-5 border-b border-slate-200 bg-gradient-to-r from-teal-50 via-blue-50 to-indigo-50">
               <h3 className="text-lg font-bold text-slate-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                Seleccione los estadísticos a calcular:
+                Seleccione los estadísticos a mostrar:
               </h3>
             </div>
 
@@ -291,76 +347,26 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                     </svg>
                     <span className="font-medium">Tendencia Central</span>
                   </div>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.n}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, n: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>N (Conteo)</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.media}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, media: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Media</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.mediana}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, mediana: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Mediana</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.moda}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, moda: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Moda</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.suma}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, suma: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Suma</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.mediaGeometrica}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, mediaGeometrica: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Media Geométrica</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tendenciaCentral.ic95Media}
-                      onChange={(e) => setTendenciaCentral({ ...tendenciaCentral, ic95Media: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>IC 95% (Media)</span>
-                  </label>
+
+                  {[
+                    { key: 'n', label: 'N (Conteo)', state: tendenciaCentral.n, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, n: v }) },
+                    { key: 'media', label: 'Media', state: tendenciaCentral.media, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, media: v }) },
+                    { key: 'mediana', label: 'Mediana', state: tendenciaCentral.mediana, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, mediana: v }) },
+                    { key: 'moda', label: 'Moda', state: tendenciaCentral.moda, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, moda: v }) },
+                    { key: 'trimmed_mean_5', label: 'Media Recortada 5%', state: tendenciaCentral.trimmed_mean_5, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, trimmed_mean_5: v }) },
+                    { key: 'suma', label: 'Suma', state: tendenciaCentral.suma, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, suma: v }) },
+                    { key: 'media_geometrica', label: 'Media Geométrica', state: tendenciaCentral.media_geometrica, setter: (v: boolean) => setTendenciaCentral({ ...tendenciaCentral, media_geometrica: v }) },
+                  ].map(({ key, label, state, setter }) => (
+                    <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={state}
+                        onChange={(e) => setter(e.target.checked)}
+                        className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      />
+                      <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
+                    </label>
+                  ))}
                 </div>
 
                 {/* Dispersión */}
@@ -371,135 +377,51 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                     </svg>
                     <span className="font-medium">Dispersión</span>
                   </div>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.desvTipica}
-                      onChange={(e) => setDispersion({ ...dispersion, desvTipica: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Desviación Típica</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.varianza}
-                      onChange={(e) => setDispersion({ ...dispersion, varianza: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Varianza</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.coefVariacion}
-                      onChange={(e) => setDispersion({ ...dispersion, coefVariacion: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Coef. Variación (%)</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.minimo}
-                      onChange={(e) => setDispersion({ ...dispersion, minimo: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Mínimo</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.maximo}
-                      onChange={(e) => setDispersion({ ...dispersion, maximo: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Máximo</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.recorrido}
-                      onChange={(e) => setDispersion({ ...dispersion, recorrido: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Recorrido (Rango)</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.rangoIntercuartilico}
-                      onChange={(e) => setDispersion({ ...dispersion, rangoIntercuartilico: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Rango Intercuartílico</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dispersion.errorEstMedia}
-                      onChange={(e) => setDispersion({ ...dispersion, errorEstMedia: e.target.checked })}
-                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Error Est. Media</span>
-                  </label>
+
+                  {[
+                    { key: 'desvTipica', label: 'Desviación Típica', state: dispersion.desvTipica, setter: (v: boolean) => setDispersion({ ...dispersion, desvTipica: v }) },
+                    { key: 'varianza', label: 'Varianza', state: dispersion.varianza, setter: (v: boolean) => setDispersion({ ...dispersion, varianza: v }) },
+                    { key: 'coefVariacion', label: 'Coef. Variación (%)', state: dispersion.coefVariacion, setter: (v: boolean) => setDispersion({ ...dispersion, coefVariacion: v }) },
+                    { key: 'recorrido', label: 'Rango', state: dispersion.recorrido, setter: (v: boolean) => setDispersion({ ...dispersion, recorrido: v }) },
+                    { key: 'rangoIntercuartilico', label: 'Rango Intercuartílico', state: dispersion.rangoIntercuartilico, setter: (v: boolean) => setDispersion({ ...dispersion, rangoIntercuartilico: v }) },
+                    { key: 'errorEstMedia', label: 'Error Est. Media (SEM)', state: dispersion.errorEstMedia, setter: (v: boolean) => setDispersion({ ...dispersion, errorEstMedia: v }) },
+                  ].map(({ key, label, state, setter }) => (
+                    <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={state}
+                        onChange={(e) => setter(e.target.checked)}
+                        className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                      />
+                      <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
+                    </label>
+                  ))}
                 </div>
 
                 {/* Percentiles */}
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-red-700 mb-3" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  <div className="flex items-center gap-2 text-sm text-blue-700 mb-3" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <rect x="2" y="8" width="16" height="4" />
                     </svg>
                     <span className="font-medium">Percentiles</span>
                   </div>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={percentiles.cuartiles}
-                      onChange={(e) => setPercentiles({ ...percentiles, cuartiles: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Cuartiles (25, 50, 75)</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={percentiles.deciles}
-                      onChange={(e) => setPercentiles({ ...percentiles, deciles: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Deciles (10, 20...90)</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={percentiles.personalizados}
-                      onChange={(e) => setPercentiles({ ...percentiles, personalizados: e.target.checked })}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Personalizados (ej: 5, 95, 99)</span>
-                  </label>
-                  
-                  {percentiles.personalizados && (
-                    <input
-                      type="text"
-                      placeholder="ej: 5, 95, 99"
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                    />
-                  )}
+
+                  {[
+                    { key: 'cuartiles', label: 'Cuartiles (Q1, Q3)', state: percentiles.cuartiles, setter: (v: boolean) => setPercentiles({ ...percentiles, cuartiles: v }) },
+                    { key: 'p5_p95', label: 'P5 y P95', state: percentiles.p5_p95, setter: (v: boolean) => setPercentiles({ ...percentiles, p5_p95: v }) },
+                    { key: 'deciles', label: 'Deciles (10, 20...90)', state: percentiles.deciles, setter: (v: boolean) => setPercentiles({ ...percentiles, deciles: v }) },
+                  ].map(({ key, label, state, setter }) => (
+                    <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={state}
+                        onChange={(e) => setter(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
+                    </label>
+                  ))}
                 </div>
 
                 {/* Forma y Distribución */}
@@ -510,270 +432,201 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                     </svg>
                     <span className="font-medium">Forma y Dist.</span>
                   </div>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formaDistribucion.asimetria}
-                      onChange={(e) => setFormaDistribucion({ ...formaDistribucion, asimetria: e.target.checked })}
-                      className="rounded border-gray-300 text-yellow-700 focus:ring-yellow-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Asimetría (Skewness)</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formaDistribucion.curtosis}
-                      onChange={(e) => setFormaDistribucion({ ...formaDistribucion, curtosis: e.target.checked })}
-                      className="rounded border-gray-300 text-yellow-700 focus:ring-yellow-500"
-                    />
-                    <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Curtosis</span>
-                  </label>
-                  
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formaDistribucion.pruebaNormalidad}
-                      onChange={(e) => setFormaDistribucion({ ...formaDistribucion, pruebaNormalidad: e.target.checked })}
-                      className="rounded border-gray-300 text-yellow-700 focus:ring-yellow-500"
-                    />
-                    <span className="text-gray-900 flex items-center gap-1" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                      Prueba Normalidad (p)
-                    </span>
-                  </label>
+
+                  {[
+                    { key: 'asimetria', label: 'Asimetría (Skewness)', state: formaDistribucion.asimetria, setter: (v: boolean) => setFormaDistribucion({ ...formaDistribucion, asimetria: v }) },
+                    { key: 'curtosis', label: 'Curtosis', state: formaDistribucion.curtosis, setter: (v: boolean) => setFormaDistribucion({ ...formaDistribucion, curtosis: v }) },
+                    { key: 'pruebaNormalidad', label: 'Prueba Normalidad', state: formaDistribucion.pruebaNormalidad, setter: (v: boolean) => setFormaDistribucion({ ...formaDistribucion, pruebaNormalidad: v }) },
+                  ].map(({ key, label, state, setter }) => (
+                    <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={state}
+                        onChange={(e) => setter(e.target.checked)}
+                        className="rounded border-gray-300 text-yellow-700 focus:ring-yellow-500"
+                      />
+                      <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Segmentation Tabs */}
-          {segmentBy && (
-            <div className="bg-white rounded-t-lg border-b-0">
-              <div className="flex items-center gap-1 px-4 border-b border-slate-200">
-                <span className="text-xs text-slate-600 mr-2 py-3" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                  Segmentado por: {segmentBy === 'genero' ? 'Género' : segmentBy === 'grupo' ? 'Grupo Control' : 'Estado de Salud'}
-                </span>
-                {segmentBy === 'genero' ? (
-                  <>
-                    {['General', 'Masculino', 'Femenino'].map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveSegmentTab(tab)}
-                        className={`px-6 py-3 text-sm font-medium transition-colors relative ${
-                          activeSegmentTab === tab ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                      >
-                        {tab}
-                        {activeSegmentTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600"></div>}
-                      </button>
-                    ))}
-                  </>
-                ) : segmentBy === 'grupo' ? (
-                  <>
-                    {['General', 'Control', 'Tratamiento'].map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveSegmentTab(tab)}
-                        className={`px-6 py-3 text-sm font-medium transition-colors relative ${
-                          activeSegmentTab === tab ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                      >
-                        {tab}
-                        {activeSegmentTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600"></div>}
-                      </button>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    {['General', 'Saludable', 'En Riesgo'].map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveSegmentTab(tab)}
-                        className={`px-6 py-3 text-sm font-medium transition-colors relative ${
-                          activeSegmentTab === tab ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                      >
-                        {tab}
-                        {activeSegmentTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600"></div>}
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+              <p className="font-medium">Error al cargar datos</p>
+              <p className="text-sm mt-1">{error}</p>
             </div>
           )}
 
           {/* Results Table */}
-          <div className={`bg-white ${segmentBy ? 'rounded-b-xl' : 'rounded-xl'} shadow-lg border border-slate-200 overflow-hidden`}>
-            <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-blue-50 to-indigo-50 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-slate-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                  Tabla Estadística Personalizada
-                </h3>
-                {segmentBy && (
-                  <span className="text-xs text-slate-600" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    Vista: {activeSegmentTab}
-                  </span>
-                )}
-              </div>
+          {isLoading ? (
+            <TableSkeleton rows={6} cols={selectedVars.length + 1} />
+          ) : selectedVars.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-12 text-center">
+              <p className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                Selecciona al menos una variable para ver los estadísticos
+              </p>
             </div>
+          ) : data && (
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-blue-50 to-indigo-50 border-b border-slate-200">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-slate-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    Resultados Estadísticos
+                  </h3>
+                  <span className="text-xs text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-200">
+                    {selectedVars.length} variable(s)
+                  </span>
+                </div>
+              </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead className="bg-gradient-to-b from-blue-50 to-blue-100 sticky top-0">
-                  <tr>
-                    <th
-                      className="px-6 py-4 text-left font-bold text-blue-900 border-b-2 border-blue-300 sticky left-0 bg-blue-50 z-10"
-                      style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, minWidth: '180px' }}
-                    >
-                      Estadístico
-                    </th>
-                    {selectedVars.map((variable) => (
-                      <th
-                        key={variable}
-                        className="px-6 py-4 text-center font-bold text-blue-900 border-b-2 border-blue-300"
-                        style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, minWidth: '150px' }}
-                      >
-                        {variable}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {selectedVars.length === 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead className="bg-gradient-to-b from-blue-50 to-blue-100 sticky top-0">
                     <tr>
-                      <td colSpan={selectedVars.length + 1} className="px-6 py-12 text-center text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                        Selecciona al menos una variable para ver los estadísticos
-                      </td>
+                      <th
+                        className="px-6 py-4 text-left font-bold text-blue-900 border-b-2 border-blue-300 sticky left-0 bg-blue-50 z-10"
+                        style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, minWidth: '200px' }}
+                      >
+                        Estadístico
+                      </th>
+                      {selectedVars.map((variable) => (
+                        <th
+                          key={variable}
+                          className="px-6 py-4 text-center font-bold text-blue-900 border-b-2 border-blue-300"
+                          style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 700, minWidth: '150px' }}
+                        >
+                          {variable}
+                        </th>
+                      ))}
                     </tr>
-                  ) : (
-                    <>
-                      {/* Tendencia Central Section */}
-                      {(tendenciaCentral.n || tendenciaCentral.media || tendenciaCentral.mediana || 
-                        tendenciaCentral.moda || tendenciaCentral.suma || tendenciaCentral.mediaGeometrica || 
-                        tendenciaCentral.ic95Media) && (
+                  </thead>
+
+                  <tbody>
+                    {/* === TENDENCIA CENTRAL === */}
+                    {(tendenciaCentral.n || tendenciaCentral.media || tendenciaCentral.mediana ||
+                      tendenciaCentral.moda || tendenciaCentral.trimmed_mean_5 ||
+                      tendenciaCentral.suma || tendenciaCentral.media_geometrica) && (
                         <>
-                          <tr className="bg-slate-100">
-                            <td 
-                              colSpan={selectedVars.length + 1} 
-                              className="px-6 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider sticky left-0 bg-slate-100"
+                          <tr className="bg-red-50">
+                            <td
+                              colSpan={selectedVars.length + 1}
+                              className="px-6 py-2 text-xs font-bold text-red-700 uppercase tracking-wider"
                               style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                             >
                               Tendencia Central
                             </td>
                           </tr>
-                          
+
                           {tendenciaCentral.n && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
                                 N
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.n}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {stats?.n ?? '-'}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {tendenciaCentral.media && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Media
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Media', 'mean', <span>Media</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.media.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.central_tendency.mean)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {tendenciaCentral.mediana && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Mediana
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Mediana', 'median', <span>Mediana</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.mediana.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.central_tendency.median)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {tendenciaCentral.moda && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Moda
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Moda', 'mode', <span>Moda</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.moda.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatMode(stats?.central_tendency.mode)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
+                          {tendenciaCentral.trimmed_mean_5 && (
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Media Recortada 5%', 'trimmed_mean_5', <span>Media Recortada 5%</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.central_tendency.trimmed_mean_5)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          )}
+
                           {tendenciaCentral.suma && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Suma
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Suma', 'sum', <span>Suma</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.suma.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.central_tendency.sum)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
-                          {tendenciaCentral.mediaGeometrica && (
+
+                          {tendenciaCentral.media_geometrica && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Media Geométrica
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Media Geométrica', 'geometric_mean', <span>Media Geométrica</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.mediaGeometrica.toFixed(2)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                          
-                          {tendenciaCentral.ic95Media && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                IC 95%
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.ic95Media}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.central_tendency.geometric_mean)}
                                   </td>
                                 );
                               })}
@@ -782,143 +635,110 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                         </>
                       )}
 
-                      {/* Dispersión Section */}
-                      {(dispersion.desvTipica || dispersion.varianza || dispersion.coefVariacion || 
-                        dispersion.minimo || dispersion.maximo || dispersion.recorrido || 
-                        dispersion.rangoIntercuartilico || dispersion.errorEstMedia) && (
+                    {/* === DISPERSIÓN === */}
+                    {(dispersion.desvTipica || dispersion.varianza || dispersion.coefVariacion ||
+                      dispersion.recorrido || dispersion.rangoIntercuartilico || dispersion.errorEstMedia) && (
                         <>
-                          <tr className="bg-slate-100">
-                            <td 
-                              colSpan={selectedVars.length + 1} 
-                              className="px-6 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider sticky left-0 bg-slate-100"
+                          <tr className="bg-gray-100">
+                            <td
+                              colSpan={selectedVars.length + 1}
+                              className="px-6 py-2 text-xs font-bold text-gray-700 uppercase tracking-wider"
                               style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
                             >
                               Dispersión
                             </td>
                           </tr>
-                          
+
                           {dispersion.desvTipica && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                D.E.
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Desviación Típica', 'std_dev', <span>Desviación Típica</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.desvTipica.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.std_dev)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {dispersion.varianza && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Varianza
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Varianza', 'variance', <span>Varianza</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.varianza.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.variance)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {dispersion.coefVariacion && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                CV %
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Coef. Variación (%)', 'cv', <span>Coef. Variación (%)</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.coefVariacion.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.cv)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
-                          {dispersion.minimo && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Mínimo
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.minimo.toFixed(2)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                          
-                          {dispersion.maximo && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Máximo
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.maximo.toFixed(2)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                          
+
                           {dispersion.recorrido && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Recorrido
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Rango', 'range', <span>Rango</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.recorrido.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.range)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {dispersion.rangoIntercuartilico && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                IQR
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Rango Intercuartílico', 'iqr', <span>Rango Intercuartílico</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.rangoIntercuartilico.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.iqr)}
                                   </td>
                                 );
                               })}
                             </tr>
                           )}
-                          
+
                           {dispersion.errorEstMedia && (
                             <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Error Est. Media
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Error Est. Media (SEM)', 'sem', <span>Error Est. Media (SEM)</span>)}
                               </td>
                               {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
+                                const stats = getStats(variable);
                                 return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.errorEstMedia.toFixed(2)}
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.dispersion.sem, 3)}
                                   </td>
                                 );
                               })}
@@ -927,179 +747,203 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                         </>
                       )}
 
-                      {/* Percentiles Section */}
-                      {(percentiles.cuartiles || percentiles.deciles || percentiles.personalizados) && (
-                        <>
-                          <tr className="bg-slate-100">
-                            <td 
-                              colSpan={selectedVars.length + 1} 
-                              className="px-6 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider sticky left-0 bg-slate-100"
-                              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                            >
-                              Percentiles
+                    {/* === PERCENTILES === */}
+                    {(percentiles.cuartiles || percentiles.p5_p95 || percentiles.deciles) && (
+                      <>
+                        <tr className="bg-blue-50">
+                          <td
+                            colSpan={selectedVars.length + 1}
+                            className="px-6 py-2 text-xs font-bold text-blue-700 uppercase tracking-wider"
+                            style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                          >
+                            Percentiles
+                          </td>
+                        </tr>
+
+                        {percentiles.cuartiles && (
+                          <>
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Q1 (25%)', 'q1', <span>Q1 (25%)</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.percentiles.q1)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Q3 (75%)', 'q3', <span>Q3 (75%)</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.percentiles.q3)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </>
+                        )}
+
+                        {percentiles.p5_p95 && (
+                          <>
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('P5', 'p5', <span>P5</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.percentiles.p5)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('P95', 'p95', <span>P95</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.percentiles.p95)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </>
+                        )}
+
+                        {percentiles.deciles && (
+                          <>
+                            {['10', '20', '30', '40', '50', '60', '70', '80', '90'].map((decile) => (
+                              <tr key={decile} className="bg-white hover:bg-slate-50/50">
+                                <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                  D{parseInt(decile) / 10} ({decile}%)
+                                </td>
+                                {selectedVars.map((variable) => {
+                                  const stats = getStats(variable);
+                                  return (
+                                    <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                      {formatValue(stats?.percentiles.deciles?.[decile])}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </>
+                        )}
+                      </>
+                    )}
+
+                    {/* === FORMA Y DISTRIBUCIÓN === */}
+                    {(formaDistribucion.asimetria || formaDistribucion.curtosis || formaDistribucion.pruebaNormalidad) && (
+                      <>
+                        <tr className="bg-yellow-50">
+                          <td
+                            colSpan={selectedVars.length + 1}
+                            className="px-6 py-2 text-xs font-bold text-yellow-700 uppercase tracking-wider"
+                            style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                          >
+                            Forma y Distribución
+                          </td>
+                        </tr>
+
+                        {formaDistribucion.asimetria && (
+                          <tr className="bg-white hover:bg-slate-50/50">
+                            <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                              {withTooltip('Asimetría', 'skewness', <span>Asimetría (Skewness)</span>)}
                             </td>
+                            {selectedVars.map((variable) => {
+                              const stats = getStats(variable);
+                              return (
+                                <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                  {formatValue(stats?.shape.skewness, 3)}
+                                </td>
+                              );
+                            })}
                           </tr>
-                          
-                          {percentiles.cuartiles && (
-                            <>
-                              <tr className="bg-white hover:bg-slate-50/50">
-                                <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                  Q1 (25%)
-                                </td>
-                                {selectedVars.map((variable) => {
-                                  const data = generateRowData(variable);
-                                  return (
-                                    <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                      {data.q25.toFixed(2)}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                              <tr className="bg-white hover:bg-slate-50/50">
-                                <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                  Q2 (50%)
-                                </td>
-                                {selectedVars.map((variable) => {
-                                  const data = generateRowData(variable);
-                                  return (
-                                    <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                      {data.q50.toFixed(2)}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                              <tr className="bg-white hover:bg-slate-50/50">
-                                <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                  Q3 (75%)
-                                </td>
-                                {selectedVars.map((variable) => {
-                                  const data = generateRowData(variable);
-                                  return (
-                                    <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                      {data.q75.toFixed(2)}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            </>
-                          )}
-                          
-                          {percentiles.deciles && (
-                            <>
-                              {[10, 20, 30, 40, 60, 70, 80, 90].map((d) => (
-                                <tr key={d} className="bg-white hover:bg-slate-50/50">
-                                  <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                    D{d / 10} ({d}%)
-                                  </td>
-                                  {selectedVars.map((variable) => {
-                                    const data = generateRowData(variable);
-                                    const key = `d${d}` as keyof typeof data;
-                                    return (
-                                      <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                        {typeof data[key] === 'number' ? (data[key] as number).toFixed(2) : '-'}
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </>
-                          )}
-                          
-                          {percentiles.personalizados && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Personalizados
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.percentiles}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                        </>
-                      )}
+                        )}
 
-                      {/* Forma y Distribución Section */}
-                      {(formaDistribucion.asimetria || formaDistribucion.curtosis || formaDistribucion.pruebaNormalidad) && (
-                        <>
-                          <tr className="bg-slate-100">
-                            <td 
-                              colSpan={selectedVars.length + 1} 
-                              className="px-6 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider sticky left-0 bg-slate-100"
-                              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                            >
-                              Forma y Dist.
+                        {formaDistribucion.curtosis && (
+                          <tr className="bg-white hover:bg-slate-50/50">
+                            <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                              {withTooltip('Curtosis', 'kurtosis', <span>Curtosis</span>)}
                             </td>
+                            {selectedVars.map((variable) => {
+                              const stats = getStats(variable);
+                              return (
+                                <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                  {formatValue(stats?.shape.kurtosis, 3)}
+                                </td>
+                              );
+                            })}
                           </tr>
-                          
-                          {formaDistribucion.asimetria && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Asimetría
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.asimetria.toFixed(3)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                          
-                          {formaDistribucion.curtosis && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                Curtosis
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {data.curtosis.toFixed(3)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                          
-                          {formaDistribucion.pruebaNormalidad && (
-                            <tr className="bg-white hover:bg-slate-50/50">
-                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                                P-Normalidad
-                              </td>
-                              {selectedVars.map((variable) => {
-                                const data = generateRowData(variable);
-                                return (
-                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200" style={{ fontFamily: 'IBM Plex Mono, JetBrains Mono, Roboto Mono, monospace', fontWeight: 500 }}>
-                                    {'<0.001'}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                        </>
-                      )}
-                    </>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        )}
 
-            <div className="px-6 py-4 bg-gradient-to-b from-slate-50 to-slate-100 border-t-2 border-slate-300">
-              <p className="text-xs text-slate-600 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                <strong>Nota:</strong> Los estadísticos mostrados se calculan dinámicamente según las opciones seleccionadas. 
-                Marca o desmarca las casillas para personalizar tu tabla.
-              </p>
+                        {formaDistribucion.pruebaNormalidad && (
+                          <>
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                {withTooltip('Normalidad (p-valor)', 'normality_test', <span>Normalidad (p-valor)</span>)}
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                    {formatValue(stats?.shape.normality_p_value, 4)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                            <tr className="bg-white hover:bg-slate-50/50">
+                              <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                                Resultado
+                              </td>
+                              {selectedVars.map((variable) => {
+                                const stats = getStats(variable);
+                                const badge = getNormalityBadge(stats?.shape.normality_test || 'Indeterminado');
+                                return (
+                                  <td key={variable} className="px-6 py-3 text-center border-b border-slate-200">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
+                                      {badge.label}
+                                    </span>
+                                    {stats?.shape.test_used && (
+                                      <div className="text-xs text-slate-500 mt-1">
+                                        ({stats.shape.test_used})
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
+          )}
 
-            <ActionToolbar />
-          </div>
+          {/* Action Toolbar */}
+          {data && selectedVars.length > 0 && (
+            <ActionToolbar
+              onExportExcel={() => console.log('Export Excel')}
+              onExportPDF={() => console.log('Export PDF')}
+              onAIInterpretation={() => console.log('AI Interpretation')}
+              onContinueToChat={() => console.log('Continue to Chat')}
+            />
+          )}
         </div>
       </div>
     </div>

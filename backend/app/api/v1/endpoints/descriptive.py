@@ -18,12 +18,16 @@ from app.schemas.stats import (
     ContingencyTableResponse,
     CorrelationRequest,
     CorrelationResponse,
+    # Smart Table
+    SmartTableRequest,
+    SmartTableResponse,
 )
 from app.services.descriptive_service import (
     DescriptiveService, 
     calculate_summary_stats, 
     generate_summary_insights,
-    calculate_frequency_stats
+    calculate_frequency_stats,
+    calculate_smart_table_stats  # Nueva función
 )
 from app.services.contingency_service import ContingencyService
 from app.services.contingency_service import ContingencyService
@@ -564,4 +568,102 @@ async def calculate_correlations_endpoint(request: CorrelationRequest) -> Correl
         tables=tables,
         segment_by=request.group_by,
         analyzed_columns=request.columns
+    )
+
+
+@router.post("/smart-table", response_model=SmartTableResponse)
+async def calculate_smart_table(request: SmartTableRequest) -> SmartTableResponse:
+    """
+    Calculate advanced descriptive statistics with nested 4-category structure.
+    
+    **Designed for healthcare professionals with scientific rigor.**
+    
+    **Output Categories:**
+    
+    1. **central_tendency**: 
+       - mean: Arithmetic mean
+       - median: 50th percentile
+       - mode: Most frequent value(s)
+       - trimmed_mean_5: 5% trimmed mean (robust to outliers)
+    
+    2. **dispersion**:
+       - std_dev: Standard deviation (ddof=1, sample estimate)
+       - variance: Sample variance
+       - range: max - min
+       - iqr: Interquartile range (Q3 - Q1)
+       - cv: Coefficient of variation (%)
+       - sem: Standard Error of the Mean (crucial for medical research)
+    
+    3. **percentiles**:
+       - q1: 25th percentile
+       - q3: 75th percentile
+       - p5: 5th percentile
+       - p95: 95th percentile
+       - deciles: 10th, 20th, ..., 90th percentiles
+    
+    4. **shape**:
+       - skewness: Asymmetry (bias=False, unbiased estimator)
+       - kurtosis: Tailedness (bias=False, unbiased estimator)
+       - normality_test: "Normal" or "No Normal" based on p > 0.05
+       - normality_p_value: P-value from normality test
+       - test_used: "Shapiro-Wilk" (n<50) or "Kolmogorov-Smirnov" (n>=50)
+    
+    **Scientific Notes:**
+    - Uses bias=False for skewness/kurtosis (unbiased estimators for clinical samples)
+    - Selects appropriate normality test based on sample size
+    - Converts NaN/Infinity to null for valid JSON serialization
+    
+    Args:
+        request: SmartTableRequest containing:
+            - session_id: Dataset session identifier
+            - columns: Optional list of numeric columns (default: all numeric)
+    
+    Returns:
+        SmartTableResponse with nested statistics by category
+    
+    Raises:
+        HTTPException 404: If session not found or expired
+        HTTPException 400: If columns are invalid or non-numeric
+        HTTPException 500: If calculation fails
+    """
+    # 1. Retrieve DataFrame from session
+    try:
+        df = data_manager.get_dataframe(request.session_id)
+    except SessionNotFoundException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message
+        )
+    
+    # 2. Calculate Smart Table statistics
+    try:
+        statistics = calculate_smart_table_stats(
+            df=df,
+            columns=request.columns
+        )
+    except InvalidColumnError as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message
+        )
+    except NonNumericColumnError as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating Smart Table statistics: {str(e)}"
+        )
+    
+    # 3. Build response
+    analyzed_columns = list(statistics.keys())
+    
+    return SmartTableResponse(
+        success=True,
+        message=f"Smart Table statistics calculated for {len(analyzed_columns)} variable(s) with 4-category nested structure",
+        session_id=request.session_id,
+        analyzed_columns=analyzed_columns,
+        statistics=statistics
     )

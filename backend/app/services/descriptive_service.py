@@ -3,10 +3,11 @@ DescriptiveService: Statistical calculations for descriptive analysis.
 Implements mathematical operations using core.py statistical engine.
 """
 
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 import pandas as pd
 import numpy as np
-from scipy.stats import shapiro
+from scipy.stats import shapiro, kstest, trim_mean, skew, kurtosis, gmean
+import math
 
 from app.core.errors import InvalidColumnError, NonNumericColumnError
 from app.schemas.stats import (
@@ -14,7 +15,13 @@ from app.schemas.stats import (
     NormalityTest, 
     OutlierAnalysis, 
     ConfidenceInterval,
-    Table1Row
+    Table1Row,
+    # Nuevos schemas para Tabla Inteligente
+    CentralTendencyStats,
+    DispersionStats,
+    PercentileStats,
+    ShapeStats,
+    SmartTableColumnStats
 )
 
 # Importar funciones del motor estadístico core.py
@@ -25,6 +32,331 @@ from app.internal.stats.core import (
     calculate_group_comparison,
     generate_table_one_structure
 )
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    """
+    Convierte un valor a float de forma segura para JSON.
+    Convierte NaN e Infinity a None para evitar errores de serialización.
+    
+    Args:
+        value: Valor a convertir (puede ser float, int, np.float64, etc.)
+        
+    Returns:
+        float válido o None si el valor no es serializable
+    """
+    if value is None:
+        return None
+    try:
+        f = float(value)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return round(f, 6)  # Redondear a 6 decimales para precisión científica
+    except (TypeError, ValueError):
+        return None
+
+
+def _calculate_geometric_mean(series: pd.Series) -> Optional[float]:
+    """
+    Calcula la media geométrica de una serie.
+    
+    Validación Crítica: La media geométrica solo está definida para valores
+    estrictamente positivos (> 0). Para datos biomédicos con ceros o valores
+    negativos (ej: log-transformaciones, cambios relativos), devuelve None.
+    
+    Args:
+        series: Serie de Pandas con datos numéricos (ya sin NaN)
+        
+    Returns:
+        Media geométrica como float, o None si:
+        - La serie está vacía
+        - Hay valores <= 0
+        - El cálculo falla
+    """
+    if len(series) == 0:
+        return None
+    
+    # Validación crítica: todos los valores deben ser > 0
+    if (series <= 0).any():
+        return None
+    
+    try:
+        gm = gmean(series.values)
+        return _safe_float(gm)
+    except Exception:
+        return None
+
+
+def _calculate_mode(series: pd.Series) -> Optional[Union[float, List[float]]]:
+    """
+    Calcula la moda de una serie numérica.
+    
+    Maneja distribuciones unimodales y multimodales:
+    - Si hay una única moda, devuelve un float
+    - Si hay múltiples modas, devuelve una lista de floats
+    - Si no hay moda clara (todos los valores únicos), devuelve None
+    
+    Args:
+        series: Serie de Pandas con datos numéricos (ya sin NaN)
+        
+    Returns:
+        - float: Si hay una moda única
+        - List[float]: Si hay múltiples modas
+        - None: Si no hay moda o la serie está vacía
+    """
+    if len(series) == 0:
+        return None
+    
+    try:
+        # value_counts() cuenta frecuencias de cada valor
+        counts = series.value_counts()
+        
+        if len(counts) == 0:
+            return None
+        
+        # El valor máximo de frecuencia
+        max_count = counts.iloc[0]
+        
+        # Si todos los valores aparecen solo una vez, no hay moda
+        if max_count == 1:
+            return None
+        
+        # Encontrar todos los valores con la frecuencia máxima
+        modes = counts[counts == max_count].index.tolist()
+        
+        if len(modes) == 1:
+            return _safe_float(modes[0])
+        else:
+            # Devolver lista de modas (ordenada de menor a mayor)
+            return [_safe_float(m) for m in sorted(modes) if _safe_float(m) is not None]
+    except Exception:
+        return None
+
+
+def calculate_smart_table_stats(
+    df: pd.DataFrame, 
+    columns: Optional[List[str]] = None
+) -> Dict[str, SmartTableColumnStats]:
+    """
+    Calcula estadísticas descriptivas avanzadas en estructura anidada de 4 categorías.
+    
+    Esta función implementa el módulo "Tabla Inteligente" con rigor científico
+    para usuarios del área de la salud.
+    
+    Categorías:
+        1. central_tendency: media, mediana, moda, media recortada 5%
+        2. dispersion: std, varianza, rango, IQR, CV%, SEM
+        3. percentiles: Q1, Q3, P5, P95, deciles
+        4. shape: asimetría, curtosis, test normalidad
+    
+    Args:
+        df: DataFrame con datos a analizar
+        columns: Lista de columnas numéricas. Si None, analiza todas las numéricas.
+        
+    Returns:
+        Dict[str, SmartTableColumnStats]: Estadísticas por columna
+        
+    Raises:
+        InvalidColumnError: Si una columna especificada no existe
+        NonNumericColumnError: Si una columna no es numérica
+    """
+    results: Dict[str, SmartTableColumnStats] = {}
+    
+    # Determinar columnas a analizar
+    if columns is None:
+        target_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+    else:
+        for col in columns:
+            if col not in df.columns:
+                raise InvalidColumnError(col, df.columns.tolist())
+        target_columns = columns
+    
+    for col in target_columns:
+        series = df[col]
+        
+        # Validar que sea numérico (intentar conversión si no lo es)
+        if not pd.api.types.is_numeric_dtype(series):
+            try:
+                series = pd.to_numeric(series, errors='coerce')
+            except Exception:
+                raise NonNumericColumnError(col)
+        
+        clean = series.dropna()
+        n = len(clean)
+        missing = int(series.isna().sum())
+        
+        # Si no hay datos válidos, retornar estadísticas vacías
+        if n == 0:
+            results[col] = SmartTableColumnStats(
+                variable=col,
+                n=0,
+                missing=missing,
+                central_tendency=CentralTendencyStats(),
+                dispersion=DispersionStats(),
+                percentiles=PercentileStats(),
+                shape=ShapeStats(normality_test="Indeterminado")
+            )
+            continue
+        
+        # =====================================================================
+        # 1. TENDENCIA CENTRAL
+        # =====================================================================
+        mean_val = _safe_float(clean.mean())
+        median_val = _safe_float(clean.median())
+        
+        # Moda: puede ser múltiple
+        mode_result = clean.mode()
+        if len(mode_result) == 0:
+            mode_val = None
+        elif len(mode_result) == 1:
+            mode_val = _safe_float(mode_result.iloc[0])
+        else:
+            # Múltiples modas
+            mode_val = [_safe_float(m) for m in mode_result.tolist()]
+        
+        # Media recortada al 5% (elimina 5% extremos de cada lado)
+        trimmed_mean_val = None
+        if n >= 3:
+            try:
+                trimmed_mean_val = _safe_float(trim_mean(clean, proportiontocut=0.05))
+            except Exception:
+                pass
+        
+        # Suma total
+        sum_val = _safe_float(clean.sum())
+        
+        # Media geométrica (solo para valores > 0)
+        geometric_mean_val = _calculate_geometric_mean(clean)
+        
+        central_tendency = CentralTendencyStats(
+            mean=mean_val,
+            median=median_val,
+            mode=mode_val,
+            trimmed_mean_5=trimmed_mean_val,
+            sum=sum_val,
+            geometric_mean=geometric_mean_val
+        )
+        
+        # =====================================================================
+        # 2. DISPERSIÓN
+        # =====================================================================
+        std_val = _safe_float(clean.std(ddof=1)) if n > 1 else None
+        variance_val = _safe_float(clean.var(ddof=1)) if n > 1 else None
+        range_val = _safe_float(clean.max() - clean.min()) if n > 0 else None
+        
+        q1 = _safe_float(clean.quantile(0.25)) if n > 0 else None
+        q3 = _safe_float(clean.quantile(0.75)) if n > 0 else None
+        iqr_val = _safe_float(q3 - q1) if q1 is not None and q3 is not None else None
+        
+        # Coeficiente de variación (CV%): (std / mean) * 100
+        cv_val = None
+        if std_val is not None and mean_val is not None and mean_val != 0:
+            cv_val = _safe_float((std_val / abs(mean_val)) * 100)
+        
+        # Error Estándar de la Media (SEM): std / sqrt(n) - CRUCIAL PARA MEDICINA
+        sem_val = None
+        if std_val is not None and n > 0:
+            sem_val = _safe_float(std_val / np.sqrt(n))
+        
+        dispersion = DispersionStats(
+            std_dev=std_val,
+            variance=variance_val,
+            range=range_val,
+            iqr=iqr_val,
+            cv=cv_val,
+            sem=sem_val
+        )
+        
+        # =====================================================================
+        # 3. PERCENTILES
+        # =====================================================================
+        p5 = _safe_float(clean.quantile(0.05)) if n > 0 else None
+        p95 = _safe_float(clean.quantile(0.95)) if n > 0 else None
+        
+        # Deciles (10, 20, 30, ..., 90)
+        deciles: Optional[Dict[str, float]] = None
+        if n >= 10:
+            deciles = {}
+            for d in range(10, 100, 10):
+                decile_val = _safe_float(clean.quantile(d / 100))
+                if decile_val is not None:
+                    deciles[str(d)] = decile_val
+        
+        percentiles_stats = PercentileStats(
+            q1=q1,
+            q3=q3,
+            p5=p5,
+            p95=p95,
+            deciles=deciles
+        )
+        
+        # =====================================================================
+        # 4. FORMA DE LA DISTRIBUCIÓN
+        # =====================================================================
+        # Asimetría y Curtosis con bias=False (estimadores INSESGADOS para muestras clínicas)
+        skewness_val = None
+        kurtosis_val = None
+        
+        if n >= 3:
+            try:
+                # bias=False usa estimador de Fisher (insesgado)
+                skewness_val = _safe_float(skew(clean, bias=False))
+                kurtosis_val = _safe_float(kurtosis(clean, bias=False))
+            except Exception:
+                pass
+        
+        # Test de Normalidad:
+        # - Shapiro-Wilk si n < 50 (más potente para muestras pequeñas)
+        # - Kolmogorov-Smirnov si n >= 50 (mejor para muestras grandes)
+        normality_result = "Indeterminado"
+        normality_p = None
+        test_used = None
+        
+        if n >= 3:
+            try:
+                if n < 50:
+                    # Shapiro-Wilk (límite de 5000, pero usamos para n < 50)
+                    stat, p_value = shapiro(clean)
+                    normality_p = _safe_float(p_value)
+                    test_used = "Shapiro-Wilk"
+                else:
+                    # Kolmogorov-Smirnov para n >= 50
+                    # Normalizar datos para el test
+                    mean_test = clean.mean()
+                    std_test = clean.std(ddof=1)
+                    if std_test > 0:
+                        normalized = (clean - mean_test) / std_test
+                        stat, p_value = kstest(normalized, 'norm')
+                        normality_p = _safe_float(p_value)
+                        test_used = "Kolmogorov-Smirnov"
+                
+                if normality_p is not None:
+                    normality_result = "Normal" if normality_p > 0.05 else "No Normal"
+            except Exception as e:
+                print(f"Warning: Normality test failed for {col}: {e}")
+        
+        shape_stats = ShapeStats(
+            skewness=skewness_val,
+            kurtosis=kurtosis_val,
+            normality_test=normality_result,
+            normality_p_value=normality_p,
+            test_used=test_used
+        )
+        
+        # =====================================================================
+        # CONSTRUIR RESULTADO FINAL
+        # =====================================================================
+        results[col] = SmartTableColumnStats(
+            variable=col,
+            n=n,
+            missing=missing,
+            central_tendency=central_tendency,
+            dispersion=dispersion,
+            percentiles=percentiles_stats,
+            shape=shape_stats
+        )
+    
+    return results
 
 
 def _is_binary_categorical(series: pd.Series) -> Tuple[bool, Optional[pd.Series]]:
@@ -522,6 +854,16 @@ class DescriptiveService:
             std_val = core_stats.get('std')
             variance_val = std_val**2 if std_val is not None else None
 
+            # --- NUEVOS CÁLCULOS: sum, geometric_mean, mode ---
+            # Suma total
+            sum_val = _safe_float(clean_series.sum())
+            
+            # Media Geométrica (requiere valores > 0)
+            geometric_mean_val = _calculate_geometric_mean(clean_series)
+            
+            # Moda
+            mode_val = _calculate_mode(clean_series)
+
             # --- CORRECCIÓN FINAL: Mapeo del Diccionario Principal ---
             # Aquí conectamos las claves en Inglés de core.py con tu Schema
             results[col] = ColumnStatistics(
@@ -553,6 +895,11 @@ class DescriptiveService:
                 cv=core_stats.get('cv'),           # Antes: 'CV' (Error)
                 range=core_stats.get('range'),     # Antes: 'rango' (Error)
                 ci_95=ci_data,
+                
+                # NUEVAS métricas requeridas
+                sum=sum_val,
+                geometric_mean=geometric_mean_val,
+                mode=mode_val,
                 
                 # Percentiles Extra
                 p5=core_stats.get('p5'),

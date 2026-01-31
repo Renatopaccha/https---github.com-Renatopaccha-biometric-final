@@ -2,14 +2,178 @@
 Pydantic schemas for statistical analysis operations.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, validator
 
 from app.schemas.base import BaseResponse
 
 
 # =============================================================================
-# NUEVOS MODELOS AVANZADOS
+# TABLA INTELIGENTE - Estructura Anidada en 4 Categorías
+# =============================================================================
+
+class CentralTendencyStats(BaseModel):
+    """Estadísticas de tendencia central para Tabla Inteligente."""
+    
+    mean: Optional[float] = Field(None, description="Media aritmética")
+    median: Optional[float] = Field(None, description="Mediana (percentil 50)")
+    mode: Optional[Union[float, List[float]]] = Field(None, description="Moda (puede ser múltiple)")
+    trimmed_mean_5: Optional[float] = Field(None, description="Media recortada al 5%")
+    sum: Optional[float] = Field(None, description="Suma total de todos los valores")
+    geometric_mean: Optional[float] = Field(
+        None, 
+        description="Media geométrica (solo definida para valores > 0)"
+    )
+
+
+class DispersionStats(BaseModel):
+    """Estadísticas de dispersión para Tabla Inteligente."""
+    
+    std_dev: Optional[float] = Field(None, description="Desviación estándar (ddof=1)")
+    variance: Optional[float] = Field(None, description="Varianza muestral")
+    range: Optional[float] = Field(None, description="Rango (max - min)")
+    iqr: Optional[float] = Field(None, description="Rango intercuartílico (Q3 - Q1)")
+    cv: Optional[float] = Field(None, description="Coeficiente de variación (%)")
+    sem: Optional[float] = Field(None, description="Error estándar de la media (crucial para medicina)")
+
+
+class PercentileStats(BaseModel):
+    """Estadísticas de percentiles para Tabla Inteligente."""
+    
+    q1: Optional[float] = Field(None, description="Primer cuartil (25%)")
+    q3: Optional[float] = Field(None, description="Tercer cuartil (75%)")
+    p5: Optional[float] = Field(None, description="Percentil 5")
+    p95: Optional[float] = Field(None, description="Percentil 95")
+    deciles: Optional[Dict[str, float]] = Field(
+        None, 
+        description="Deciles: {'10': valor, '20': valor, ..., '90': valor}"
+    )
+
+
+class ShapeStats(BaseModel):
+    """Estadísticas de forma de distribución para Tabla Inteligente."""
+    
+    skewness: Optional[float] = Field(None, description="Asimetría (bias=False, estimador insesgado)")
+    kurtosis: Optional[float] = Field(None, description="Curtosis (bias=False, estimador insesgado)")
+    normality_test: str = Field(
+        "Indeterminado", 
+        description="Interpretación simple: 'Normal' o 'No Normal' basado en test apropiado"
+    )
+    normality_p_value: Optional[float] = Field(None, description="P-valor del test de normalidad")
+    test_used: Optional[str] = Field(
+        None, 
+        description="Test usado: 'Shapiro-Wilk' si n<50, 'Kolmogorov-Smirnov' si n>=50"
+    )
+
+
+class SmartTableColumnStats(BaseModel):
+    """Estadísticas completas para una columna en estructura anidada de 4 categorías."""
+    
+    variable: str = Field(..., description="Nombre de la columna analizada")
+    n: int = Field(..., description="Número de observaciones válidas (no nulas)")
+    missing: int = Field(0, description="Número de valores faltantes")
+    
+    central_tendency: CentralTendencyStats = Field(..., description="Estadísticas de tendencia central")
+    dispersion: DispersionStats = Field(..., description="Estadísticas de dispersión")
+    percentiles: PercentileStats = Field(..., description="Estadísticas de percentiles")
+    shape: ShapeStats = Field(..., description="Estadísticas de forma de la distribución")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "variable": "glucose",
+                "n": 100,
+                "missing": 5,
+                "central_tendency": {
+                    "mean": 95.5,
+                    "median": 92.0,
+                    "mode": 90.0,
+                    "trimmed_mean_5": 94.2
+                },
+                "dispersion": {
+                    "std_dev": 15.3,
+                    "variance": 234.09,
+                    "range": 80.0,
+                    "iqr": 20.0,
+                    "cv": 16.02,
+                    "sem": 1.53
+                },
+                "percentiles": {
+                    "q1": 85.0,
+                    "q3": 105.0,
+                    "p5": 70.0,
+                    "p95": 125.0,
+                    "deciles": {"10": 75.0, "20": 80.0, "30": 85.0, "40": 88.0, "50": 92.0, "60": 96.0, "70": 100.0, "80": 108.0, "90": 118.0}
+                },
+                "shape": {
+                    "skewness": 0.45,
+                    "kurtosis": -0.12,
+                    "normality_test": "Normal",
+                    "normality_p_value": 0.234,
+                    "test_used": "Shapiro-Wilk"
+                }
+            }
+        }
+
+
+class SmartTableRequest(BaseModel):
+    """Request para cálculo de estadísticas de Tabla Inteligente."""
+    
+    session_id: str = Field(..., description="Session ID del dataset cargado")
+    columns: Optional[List[str]] = Field(
+        None, 
+        description="Columnas numéricas a analizar. Si es None, analiza todas las numéricas."
+    )
+    
+    @validator('session_id')
+    def validate_session_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("session_id cannot be empty")
+        return v.strip()
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "columns": ["age", "glucose", "bmi"]
+            }
+        }
+
+
+class SmartTableResponse(BaseResponse):
+    """Response del endpoint Tabla Inteligente con estructura anidada en 4 categorías."""
+    
+    session_id: str = Field(..., description="Session ID del dataset analizado")
+    analyzed_columns: List[str] = Field(..., description="Lista de columnas que fueron analizadas")
+    statistics: Dict[str, SmartTableColumnStats] = Field(
+        ..., 
+        description="Estadísticas por columna en estructura anidada de 4 categorías"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Smart Table statistics calculated successfully",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "analyzed_columns": ["glucose"],
+                "statistics": {
+                    "glucose": {
+                        "variable": "glucose",
+                        "n": 100,
+                        "missing": 5,
+                        "central_tendency": {"mean": 95.5, "median": 92.0, "mode": 90.0, "trimmed_mean_5": 94.2},
+                        "dispersion": {"std_dev": 15.3, "variance": 234.09, "range": 80.0, "iqr": 20.0, "cv": 16.02, "sem": 1.53},
+                        "percentiles": {"q1": 85.0, "q3": 105.0, "p5": 70.0, "p95": 125.0, "deciles": {}},
+                        "shape": {"skewness": 0.45, "kurtosis": -0.12, "normality_test": "Normal", "normality_p_value": 0.234, "test_used": "Shapiro-Wilk"}
+                    }
+                }
+            }
+        }
+
+
+# =============================================================================
+# NUEVOS MODELOS AVANZADOS (Legacy)
 # =============================================================================
 
 class NormalityTest(BaseModel):
@@ -406,6 +570,17 @@ class ColumnStatistics(BaseModel):
     range: Optional[float] = Field(None, description="Range (max - min)")
     ci_95: Optional[ConfidenceInterval] = Field(None, description="95% confidence interval")
     
+    # Métricas adicionales requeridas
+    sum: Optional[float] = Field(None, description="Sum of all values")
+    geometric_mean: Optional[float] = Field(
+        None, 
+        description="Geometric mean (only defined for positive values > 0)"
+    )
+    mode: Optional[Union[float, List[float]]] = Field(
+        None, 
+        description="Mode(s) - most frequent value(s). Can be single value or list if multimodal."
+    )
+    
     # Percentiles adicionales
     p5: Optional[float] = Field(None, description="5th percentile")
     p10: Optional[float] = Field(None, description="10th percentile")
@@ -436,6 +611,9 @@ class ColumnStatistics(BaseModel):
                 "cv": 27.03,
                 "range": 57.0,
                 "ci_95": {"lower": 43.1, "upper": 47.9, "confidence_level": 0.95},
+                "sum": 4550.0,
+                "geometric_mean": 42.8,
+                "mode": 44.0,
                 "p5": 22.5,
                 "p10": 28.0,
                 "p90": 63.0,
