@@ -79,6 +79,10 @@ class SmartTableColumnStats(BaseModel):
     dispersion: DispersionStats = Field(..., description="Estadísticas de dispersión")
     percentiles: PercentileStats = Field(..., description="Estadísticas de percentiles")
     shape: ShapeStats = Field(..., description="Estadísticas de forma de la distribución")
+    custom_percentiles_data: Dict[str, float] = Field(
+        default={}, 
+        description="Valores de percentiles personalizados calculados (e.g., {'P99': 140.5})"
+    )
     
     class Config:
         json_schema_extra = {
@@ -126,6 +130,10 @@ class SmartTableRequest(BaseModel):
         None, 
         description="Columnas numéricas a analizar. Si es None, analiza todas las numéricas."
     )
+    custom_percentiles: List[float] = Field(
+        default=[],
+        description="Lista de percentiles personalizados solicitados (0-100)"
+    )
     
     @validator('session_id')
     def validate_session_id(cls, v: str) -> str:
@@ -137,7 +145,8 @@ class SmartTableRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "session_id": "550e8400-e29b-41d4-a716-446655440000",
-                "columns": ["age", "glucose", "bmi"]
+                "columns": ["age", "glucose", "bmi"],
+                "custom_percentiles": [2.5, 99]
             }
         }
 
@@ -280,6 +289,12 @@ class DescriptiveStatsRequest(BaseModel):
     include_ci: bool = Field(
         default=True,
         description="Include 95% confidence intervals"
+    )
+
+    # NUEVO: Percentiles personalizados
+    custom_percentiles: List[float] = Field(
+        default=[],
+        description="List of custom percentiles requested (0-100)"
     )
     
     @validator('session_id')
@@ -589,9 +604,15 @@ class ColumnStatistics(BaseModel):
     p90: Optional[float] = Field(None, description="90th percentile")
     p95: Optional[float] = Field(None, description="95th percentile")
     
-    # Análisis avanzados
+    # Objetos Anidados
     normality: Optional[NormalityTest] = Field(None, description="Normality test results")
     outliers: Optional[OutlierAnalysis] = Field(None, description="Outlier detection results")
+    
+    # Percentiles personalizados dinámicos
+    custom_percentiles_data: Dict[str, float] = Field(
+        default={}, 
+        description="Calculated values for requested custom percentiles (e.g., {'P99': 140.5})"
+    )
     
     class Config:
         json_schema_extra = {

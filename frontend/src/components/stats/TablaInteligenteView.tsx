@@ -169,7 +169,11 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     cuartiles: true,
     p5_p95: false,
     deciles: false,
+    customPercentileEnabled: false,
   });
+
+  // Custom percentile value (0-100)
+  const [customPercentileValue, setCustomPercentileValue] = useState<number>(95);
 
   const [formaDistribucion, setFormaDistribucion] = useState({
     asimetria: false,
@@ -209,7 +213,11 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     setError(null);
 
     try {
-      const response = await getSmartTableStats(sessionId, selectedVars);
+      const response = await getSmartTableStats(
+        sessionId,
+        selectedVars,
+        percentiles.customPercentileEnabled ? [customPercentileValue] : undefined
+      );
       setData(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar estadísticas');
@@ -217,7 +225,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId, selectedVars]);
+  }, [sessionId, selectedVars, percentiles.customPercentileEnabled, customPercentileValue]);
 
   // Debounce fetch
   useEffect(() => {
@@ -428,6 +436,36 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                       <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
                     </label>
                   ))}
+
+                  {/* Custom Percentile Option */}
+                  <div className="pt-2 border-t border-slate-200">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={percentiles.customPercentileEnabled}
+                        onChange={(e) => setPercentiles({ ...percentiles, customPercentileEnabled: e.target.checked })}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-gray-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Percentil Personalizado</span>
+                    </label>
+                    {percentiles.customPercentileEnabled && (
+                      <div className="mt-2 ml-5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={customPercentileValue}
+                          onChange={(e) => {
+                            const val = Math.min(100, Math.max(0, Number(e.target.value)));
+                            setCustomPercentileValue(val);
+                          }}
+                          className="w-20 px-2 py-1 text-sm border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="95"
+                        />
+                        <span className="ml-2 text-xs text-slate-500">P({customPercentileValue})</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Forma y Distribución */}
@@ -803,7 +841,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                       )}
 
                     {/* === PERCENTILES === */}
-                    {(percentiles.cuartiles || percentiles.p5_p95 || percentiles.deciles) && (
+                    {(percentiles.cuartiles || percentiles.p5_p95 || percentiles.deciles || percentiles.customPercentileEnabled) && (
                       <>
                         <tr className="bg-blue-50">
                           <td
@@ -895,6 +933,25 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                               </tr>
                             ))}
                           </>
+                        )}
+
+                        {/* Custom Percentile Row */}
+                        {percentiles.customPercentileEnabled && (
+                          <tr className="bg-white hover:bg-slate-50/50">
+                            <td className="px-6 py-3 text-sm font-medium text-slate-900 border-b border-slate-200 sticky left-0 bg-white">
+                              <span className="text-blue-600 font-semibold">P({customPercentileValue})</span>
+                            </td>
+                            {selectedVars.map((variable) => {
+                              const stats = getStats(variable);
+                              const customKey = `P${customPercentileValue}`;
+                              const customValue = stats?.custom_percentiles_data?.[customKey];
+                              return (
+                                <td key={variable} className="px-6 py-3 text-sm text-slate-900 text-center border-b border-slate-200 font-mono">
+                                  {formatValue(customValue)}
+                                </td>
+                              );
+                            })}
+                          </tr>
                         )}
                       </>
                     )}

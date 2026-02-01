@@ -213,11 +213,13 @@ export async function getCrosstabStats(
  */
 export async function getSmartTableStats(
     sessionId: string,
-    columns?: string[]
+    columns?: string[],
+    customPercentiles?: number[]
 ): Promise<SmartTableResponse> {
     const requestBody: SmartTableRequest = {
         session_id: sessionId,
         columns: columns ?? null,
+        custom_percentiles: customPercentiles,
     };
 
     const response = await fetch(`${API_BASE_URL}/api/v1/stats/smart-table`, {

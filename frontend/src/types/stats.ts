@@ -66,6 +66,7 @@ export interface SmartTableColumnStats {
     dispersion: DispersionStats;
     percentiles: PercentileStats;
     shape: ShapeStats;
+    custom_percentiles_data?: Record<string, number>;
 }
 
 /**
@@ -74,6 +75,7 @@ export interface SmartTableColumnStats {
 export interface SmartTableRequest {
     session_id: string;
     columns?: string[] | null;
+    custom_percentiles?: number[];
 }
 
 /**

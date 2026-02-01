@@ -135,7 +135,8 @@ def _calculate_mode(series: pd.Series) -> Optional[Union[float, List[float]]]:
 
 def calculate_smart_table_stats(
     df: pd.DataFrame, 
-    columns: Optional[List[str]] = None
+    columns: Optional[List[str]] = None,
+    custom_percentiles: Optional[List[float]] = None
 ) -> Dict[str, SmartTableColumnStats]:
     """
     Calcula estadísticas descriptivas avanzadas en estructura anidada de 4 categorías.
@@ -354,6 +355,21 @@ def calculate_smart_table_stats(
         )
         
         # =====================================================================
+        # 5. PERCENTILES PERSONALIZADOS
+        # =====================================================================
+        custom_percentiles_data: Dict[str, float] = {}
+        if custom_percentiles and n > 0:
+            for p in custom_percentiles:
+                # Validar rango 0-100
+                if 0 <= p <= 100:
+                    try:
+                        val = np.percentile(clean, p)
+                        key = f"P{p:g}"  # P99, P2.5, etc.
+                        custom_percentiles_data[key] = _safe_float(val)
+                    except Exception as e:
+                        print(f"Warning: Failed to calculate percentile {p} for {col}: {e}")
+        
+        # =====================================================================
         # CONSTRUIR RESULTADO FINAL
         # =====================================================================
         results[col] = SmartTableColumnStats(
@@ -363,7 +379,8 @@ def calculate_smart_table_stats(
             central_tendency=central_tendency,
             dispersion=dispersion,
             percentiles=percentiles_stats,
-            shape=shape_stats
+            shape=shape_stats,
+            custom_percentiles_data=custom_percentiles_data
         )
     
     return results
@@ -741,7 +758,8 @@ class DescriptiveService:
         group_by: Optional[str] = None,
         include_normality: bool = True,
         include_outliers: bool = True,
-        include_ci: bool = True
+        include_ci: bool = True,
+        custom_percentiles: List[float] = []
     ) -> Tuple[Dict[str, ColumnStatistics], Optional[List[Table1Row]]]:
         """
         Calculate comprehensive descriptive statistics using core.py engine.
@@ -763,7 +781,7 @@ class DescriptiveService:
         
         # 3. Calculate univariate statistics for all columns
         stats_dict = DescriptiveService._calculate_univariate_stats(
-            df, target_columns, include_normality, include_outliers, include_ci
+            df, target_columns, include_normality, include_outliers, include_ci, custom_percentiles
         )
         
         # 4. If group_by is provided, generate Table 1
@@ -781,7 +799,8 @@ class DescriptiveService:
         columns: List[str],
         include_normality: bool,
         include_outliers: bool,
-        include_ci: bool
+        include_ci: bool,
+        custom_percentiles: List[float]
     ) -> Dict[str, ColumnStatistics]:
         """
         Calculate univariate statistics for each column using core.py.
@@ -874,6 +893,21 @@ class DescriptiveService:
             # Moda
             mode_val = _calculate_mode(clean_series)
 
+            # --- NUEVO: Percentiles Personalizados ---
+            custom_percentiles_data = {}
+            if custom_percentiles and len(clean_series) > 0:
+                for p in custom_percentiles:
+                    # Validar rango 0-100
+                    if 0 <= p <= 100:
+                        try:
+                            # Calcular percentil
+                            val = np.percentile(clean_series, p)
+                            # Clave legible, ej: "P99" o "P2.5"
+                            key = f"P{p:g}" 
+                            custom_percentiles_data[key] = _safe_float(val)
+                        except Exception as e:
+                            print(f"Warning: Failed to calculate percentile {p} for {col}: {e}")
+
             # --- CORRECCIÓN FINAL: Mapeo del Diccionario Principal ---
             # Aquí conectamos las claves en Inglés de core.py con tu Schema
             results[col] = ColumnStatistics(
@@ -919,7 +953,10 @@ class DescriptiveService:
                 
                 # Objetos Anidados
                 normality=normality_data,
-                outliers=outlier_data
+                outliers=outlier_data,
+                
+                # Percentiles personalizados
+                custom_percentiles_data=custom_percentiles_data
             )
         
         return results

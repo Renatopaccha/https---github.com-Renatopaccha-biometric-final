@@ -107,7 +107,8 @@ async def calculate_descriptive_stats(request: DescriptiveStatsRequest) -> Descr
             group_by=request.group_by,
             include_normality=request.include_normality,
             include_outliers=request.include_outliers,
-            include_ci=request.include_ci
+            include_ci=request.include_ci,
+            custom_percentiles=request.custom_percentiles
         )
     except InvalidColumnError as e:
         raise HTTPException(
@@ -639,7 +640,8 @@ async def calculate_smart_table(request: SmartTableRequest) -> SmartTableRespons
     try:
         statistics = calculate_smart_table_stats(
             df=df,
-            columns=request.columns
+            columns=request.columns,
+            custom_percentiles=request.custom_percentiles
         )
     except InvalidColumnError as e:
         raise HTTPException(
