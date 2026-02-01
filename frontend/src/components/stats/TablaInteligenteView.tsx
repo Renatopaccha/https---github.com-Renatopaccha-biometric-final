@@ -646,11 +646,11 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                       dispersion.maximo || dispersion.recorrido || dispersion.coefVariacion ||
                       dispersion.rangoIntercuartilico || dispersion.errorEstMedia) && (
                         <>
-                          <tr className="bg-indigo-50">
+                          <tr className="bg-purple-100" style={{ backgroundColor: '#f3e8ff' }}>
                             <td
                               colSpan={selectedVars.length + 1}
-                              className="px-6 py-2 text-xs font-bold text-indigo-700 uppercase tracking-wider"
-                              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                              className="px-6 py-2 text-xs font-bold text-purple-800 uppercase tracking-wider"
+                              style={{ fontFamily: 'Inter, system-ui, sans-serif', color: '#6b21a8' }}
                             >
                               Dispersión
                             </td>
