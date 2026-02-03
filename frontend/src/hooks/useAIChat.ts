@@ -44,7 +44,7 @@ interface UseAIChatReturn {
  * const { messages, chatSessions, sendMessage, loadChatHistory } = useAIChat();
  */
 export function useAIChat(): UseAIChatReturn {
-    const { sessionId } = useDataContext();
+    const { sessionId: dataSessionId } = useDataContext();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [chatId, setChatId] = useState<string | null>(null);
     const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -54,6 +54,28 @@ export function useAIChat(): UseAIChatReturn {
         content: string;
         files?: File[];
     } | null>(null);
+
+    // Generate or retrieve a chat session ID (works even without data session)
+    const [chatSessionId, setChatSessionId] = useState<string | null>(() => {
+        // Priority: data session > stored chat session
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('biometric_chat_session_id');
+        }
+        return null;
+    });
+
+    // Effective session ID: prefer data session, fallback to chat-only session
+    const sessionId = dataSessionId || chatSessionId;
+
+    // Generate chat session ID if needed
+    useEffect(() => {
+        if (!sessionId && typeof window !== 'undefined') {
+            const newChatSessionId = crypto.randomUUID();
+            localStorage.setItem('biometric_chat_session_id', newChatSessionId);
+            setChatSessionId(newChatSessionId);
+            console.log('[useAIChat] Generated new chat session:', newChatSessionId);
+        }
+    }, [sessionId]);
 
     // Use ref to avoid recreating sendMessage on every message change (performance optimization)
     const messagesRef = useRef<ChatMessage[]>(messages);

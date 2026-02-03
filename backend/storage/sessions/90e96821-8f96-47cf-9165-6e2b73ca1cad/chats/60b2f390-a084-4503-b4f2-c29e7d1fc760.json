@@ -1,0 +1,20 @@
+{
+  "id": "60b2f390-a084-4503-b4f2-c29e7d1fc760",
+  "session_id": "90e96821-8f96-47cf-9165-6e2b73ca1cad",
+  "title": "Hola, esto es una prueba de persistencia",
+  "created_at": "2026-02-03T14:13:16.881787",
+  "updated_at": "2026-02-03T14:13:23.969008",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hola, esto es una prueba de persistencia",
+      "timestamp": "2026-02-03T14:13:23.940488"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! Excelente, me complace que estés probando la persistencia de nuestra plataforma. Soy tu Consultor Experto en Bioestadística y Ciencia de Datos Clínicos para la aplicación \"Biometric\".\n\nMi rol es ayudarte a **transformar tus datos clínicos en conocimientos accionables**, guiándote a través del diseño experimental, el análisis estadístico riguroso, la interpretación profunda y la visualización efectiva.\n\nEstoy aquí para apoyarte en:\n*   **Diseño de Estudios:** Ayudarte a estructurar tus experimentos para obtener la máxima validez estadística.\n*   **Análisis de Datos:** Aplicar las pruebas estadísticas más adecuadas, desde las básicas hasta los modelos predictivos complejos.\n*   **Interpretación de Resultados:** Ir más allá de los valores p, entendiendo el significado clínico y biológico de tus hallazgos.\n*   **Visualización:** Sugerir las mejores formas de presentar tus datos para comunicar tu historia de manera clara.\n*   **Optimización:** Identificar oportunidades para mejorar la calidad de tus datos y la robustez de tus conclusiones.\n\n**Para que podamos empezar a explorar juntos:**\n\n¿Hay algún proyecto de investigación en particular en el que estés trabajando o alguna pregunta sobre tus datos clínicos que te gustaría empezar a abordar hoy? ¿Quizás estás en la fase de planificación de un estudio, o ya tienes datos y buscas una guía para su análisis?",
+      "timestamp": "2026-02-03T14:13:23.966627"
+    }
+  ],
+  "model": "gemini-2.5-flash"
+}

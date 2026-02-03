@@ -1,0 +1,9 @@
+[
+  {
+    "id": "60b2f390-a084-4503-b4f2-c29e7d1fc760",
+    "title": "Hola, esto es una prueba de persistencia",
+    "timestamp": "2026-02-03T14:13:23.966642",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  }
+]

@@ -155,8 +155,33 @@ class ChatManager:
         with self._chat_lock:
             chat_path = self._get_chat_path(session_id, chat_id)
             
+            # Auto-recovery: create chat file if it doesn't exist
             if not chat_path.exists():
-                raise ValueError(f"Chat {chat_id} not found")
+                print(f"[DEBUG] Chat file not found, creating: {chat_id}")
+                self._ensure_chats_dir(session_id)
+                timestamp = datetime.now().isoformat()
+                chat_data = {
+                    "id": chat_id,
+                    "session_id": session_id,
+                    "title": "Nueva conversación",
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                    "messages": [],
+                    "model": "gemini-2.5-flash"
+                }
+                with open(chat_path, 'w', encoding='utf-8') as f:
+                    json.dump(chat_data, f, indent=2, ensure_ascii=False)
+                
+                # Also update index
+                index = self._load_index(session_id)
+                index.append({
+                    "id": chat_id,
+                    "title": "Nueva conversación",
+                    "timestamp": timestamp,
+                    "message_count": 0,
+                    "model": "gemini-2.5-flash"
+                })
+                self._save_index(session_id, index)
             
             # Load chat
             with open(chat_path, 'r', encoding='utf-8') as f:
