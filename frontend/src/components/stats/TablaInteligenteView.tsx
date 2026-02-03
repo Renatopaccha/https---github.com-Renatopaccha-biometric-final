@@ -1,5 +1,5 @@
-import { ArrowLeft, ChevronDown, Info, Loader2 } from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { ArrowLeft, ChevronDown, Info, Loader2, Users } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ActionToolbar } from './ActionToolbar';
 import { getSmartTableStats } from '../../api/stats';
 import { useDataContext } from '../../context/DataContext';
@@ -129,14 +129,39 @@ const STAT_TOOLTIPS: Record<string, string> = {
 // =============================================================================
 
 export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
-  const { sessionId, columns: allColumns } = useDataContext();
+  const { sessionId, columns: allColumns, healthReport } = useDataContext();
 
   // Use all columns as available variables (backend will validate which are numeric)
   const availableVars = allColumns || [];
 
+  // Get categorical columns for segmentation dropdown (from healthReport)
+  const categoricalVars = useMemo(() => {
+    if (!healthReport?.columns) return [];
+    return Object.entries(healthReport.columns)
+      .filter(([_, colInfo]) => {
+        // Include object/string types or columns with few unique values
+        const dtype = colInfo.data_type?.toLowerCase() || '';
+        const uniqueCount = colInfo.unique_count || 0;
+        const totalRows = healthReport.total_rows || 1;
+        // Categorical if: string/object type, or <20 unique values, or <10% unique ratio
+        return (
+          dtype.includes('object') ||
+          dtype.includes('str') ||
+          dtype.includes('category') ||
+          (uniqueCount <= 20 && uniqueCount > 1) ||
+          (uniqueCount / totalRows < 0.1 && uniqueCount > 1)
+        );
+      })
+      .map(([colName]) => colName);
+  }, [healthReport]);
+
   // Selected variables
   const [selectedVars, setSelectedVars] = useState<string[]>([]);
   const [showVarsDropdown, setShowVarsDropdown] = useState(false);
+
+  // Segmentation state
+  const [segmentBy, setSegmentBy] = useState<string>('');
+  const [showSegmentDropdown, setShowSegmentDropdown] = useState(false);
 
   // Data state
   const [data, setData] = useState<SmartTableResponse | null>(null);
@@ -182,6 +207,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   });
 
   const varsRef = useRef<HTMLDivElement>(null);
+  const segmentRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first 3 variables on mount
   useEffect(() => {
@@ -196,13 +222,16 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
       if (varsRef.current && !varsRef.current.contains(event.target as Node)) {
         setShowVarsDropdown(false);
       }
+      if (segmentRef.current && !segmentRef.current.contains(event.target as Node)) {
+        setShowSegmentDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch data when variables change
+  // Fetch data when variables or segmentation change
   const fetchData = useCallback(async () => {
     if (!sessionId || selectedVars.length === 0) {
       setData(null);
@@ -216,7 +245,8 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
       const response = await getSmartTableStats(
         sessionId,
         selectedVars,
-        percentiles.customPercentileEnabled ? [customPercentileValue] : undefined
+        percentiles.customPercentileEnabled ? [customPercentileValue] : undefined,
+        segmentBy || undefined  // Pass segmentBy to API
       );
       setData(response);
     } catch (err) {
@@ -225,7 +255,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId, selectedVars, percentiles.customPercentileEnabled, customPercentileValue]);
+  }, [sessionId, selectedVars, percentiles.customPercentileEnabled, customPercentileValue, segmentBy]);
 
   // Debounce fetch
   useEffect(() => {
@@ -241,11 +271,19 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     );
   };
 
-  // Get statistics for a variable
-  const getStats = (variable: string): SmartTableColumnStats | null => {
+  // Get statistics for a variable and segment (new signature for segmentation support)
+  const getStats = (variable: string, segment?: string): SmartTableColumnStats | null => {
     if (!data?.statistics) return null;
-    return data.statistics[variable] || null;
+    const varStats = data.statistics[variable];
+    if (!varStats) return null;
+    // If segmented, get specific segment stats; otherwise get "General"
+    const targetSegment = segment || 'General';
+    return varStats[targetSegment] || null;
   };
+
+  // Get all segments from data
+  const segments = data?.segments || ['General'];
+  const hasSegmentation = segmentBy && segments.length > 1;
 
   // Render tooltip wrapper
   const withTooltip = (label: string, tooltipKey: string, children: React.ReactNode) => (
@@ -335,7 +373,72 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
               </div>
             )}
           </div>
+
+          {/* Segmentation Dropdown */}
+          <div className="relative max-w-xs ml-4" ref={segmentRef}>
+            <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              <Users className="w-3.5 h-3.5 inline mr-1" />
+              Segmentar por...
+            </label>
+            <button
+              onClick={() => setShowSegmentDropdown(!showSegmentDropdown)}
+              className={`w-full px-4 py-3 bg-white border rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm ${segmentBy ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-300'
+                }`}
+              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+            >
+              <span className={`flex-1 text-left ${segmentBy ? 'text-indigo-700 font-medium' : 'text-slate-500'}`}>
+                {segmentBy || 'Sin segmentación'}
+              </span>
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            </button>
+
+            {showSegmentDropdown && (
+              <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
+                {/* Option to clear segmentation */}
+                <button
+                  onClick={() => {
+                    setSegmentBy('');
+                    setShowSegmentDropdown(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm ${!segmentBy ? 'bg-slate-100 font-medium' : ''
+                    }`}
+                >
+                  <span className="text-slate-500 italic">Sin segmentación</span>
+                </button>
+
+                {categoricalVars.length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-slate-500">
+                    No hay variables categóricas disponibles
+                  </div>
+                ) : (
+                  categoricalVars.map((variable) => (
+                    <button
+                      key={variable}
+                      onClick={() => {
+                        setSegmentBy(variable);
+                        setShowSegmentDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm ${segmentBy === variable ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-900'
+                        }`}
+                    >
+                      {variable}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Active segmentation indicator */}
+        {hasSegmentation && (
+          <div className="ml-4 mt-3">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+              <Users className="w-3 h-3" />
+              Segmentado por: {segmentBy} ({segments.length} grupos)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
@@ -514,7 +617,103 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
                 Selecciona al menos una variable para ver los estadísticos
               </p>
             </div>
+          ) : data && hasSegmentation ? (
+            /* ============================================= */
+            /* SEGMENTED TABLE VIEW - Variable | Grupo | Stats */
+            /* ============================================= */
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border-b border-slate-200">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-slate-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    Resultados por Grupo
+                  </h3>
+                  <span className="text-xs text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-200">
+                    {selectedVars.length} variable(s) × {segments.length} grupos
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead className="bg-gradient-to-b from-indigo-50 to-indigo-100 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-bold text-indigo-900 border-b-2 border-indigo-300 sticky left-0 bg-indigo-50 z-10" style={{ fontFamily: 'Inter, system-ui, sans-serif', minWidth: '140px' }}>
+                        Variable
+                      </th>
+                      <th className="px-4 py-3 text-left font-bold text-indigo-900 border-b-2 border-indigo-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', minWidth: '100px' }}>
+                        Grupo
+                      </th>
+                      {tendenciaCentral.n && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">N</th>}
+                      {tendenciaCentral.media && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Media</th>}
+                      {tendenciaCentral.mediana && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Mediana</th>}
+                      {dispersion.desvTipica && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">DE</th>}
+                      {dispersion.coefVariacion && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">CV%</th>}
+                      {dispersion.rangoIntercuartilico && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">RIQ</th>}
+                      {dispersion.errorEstMedia && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">SEM</th>}
+                      {percentiles.cuartiles && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Q1</th>}
+                      {percentiles.cuartiles && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Q3</th>}
+                      {formaDistribucion.pruebaNormalidad && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Normalidad</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedVars.map((variable, varIdx) => (
+                      segments.map((segment, segIdx) => {
+                        const stats = getStats(variable, segment);
+                        const isFirstInGroup = segIdx === 0;
+                        const isLastInGroup = segIdx === segments.length - 1;
+                        const badge = stats ? getNormalityBadge(stats.shape.normality_test) : { bg: 'bg-gray-100', text: 'text-gray-600', label: '-' };
+
+                        return (
+                          <tr
+                            key={`${variable}-${segment}`}
+                            className={`
+                              ${isFirstInGroup ? 'border-t-2 border-slate-300' : ''} 
+                              ${varIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}
+                              hover:bg-indigo-50/30 transition-colors
+                            `}
+                          >
+                            {/* Variable name - show only on first row of each group or with faded style */}
+                            <td className={`px-4 py-2.5 text-sm border-b border-slate-200 sticky left-0 ${varIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                              <span className={isFirstInGroup ? 'font-semibold text-slate-900' : 'text-slate-400 text-xs'}>
+                                {isFirstInGroup ? variable : '↳ ' + variable}
+                              </span>
+                            </td>
+                            {/* Segment/Group name */}
+                            <td className="px-4 py-2.5 text-sm border-b border-slate-200">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${segment === 'General' ? 'bg-gray-100 text-gray-700' : 'bg-indigo-100 text-indigo-700'
+                                }`}>
+                                {segment}
+                              </span>
+                            </td>
+                            {/* Stats cells */}
+                            {tendenciaCentral.n && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{stats?.n ?? '-'}</td>}
+                            {tendenciaCentral.media && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.central_tendency.mean)}</td>}
+                            {tendenciaCentral.mediana && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.central_tendency.median)}</td>}
+                            {dispersion.desvTipica && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.std_dev)}</td>}
+                            {dispersion.coefVariacion && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.cv)}</td>}
+                            {dispersion.rangoIntercuartilico && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.iqr)}</td>}
+                            {dispersion.errorEstMedia && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.sem)}</td>}
+                            {percentiles.cuartiles && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.percentiles.q1)}</td>}
+                            {percentiles.cuartiles && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.percentiles.q3)}</td>}
+                            {formaDistribucion.pruebaNormalidad && (
+                              <td className="px-3 py-2.5 text-center border-b border-slate-200">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
+                                  {badge.label}
+                                </span>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : data && (
+            /* ============================================= */
+            /* ORIGINAL TABLE VIEW - Stats rows × Variable columns */
+            /* ============================================= */
             <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
               <div className="px-6 py-4 bg-gradient-to-r from-teal-50 via-blue-50 to-indigo-50 border-b border-slate-200">
                 <div className="flex items-center justify-between">

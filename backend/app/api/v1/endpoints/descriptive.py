@@ -636,12 +636,20 @@ async def calculate_smart_table(request: SmartTableRequest) -> SmartTableRespons
             detail=e.message
         )
     
-    # 2. Calculate Smart Table statistics
+    # 2. Validate group_by column if provided
+    if request.group_by and request.group_by not in df.columns:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Group column '{request.group_by}' not found in dataset"
+        )
+    
+    # 3. Calculate Smart Table statistics with optional segmentation
     try:
-        statistics = calculate_smart_table_stats(
+        statistics, segments = calculate_smart_table_stats(
             df=df,
             columns=request.columns,
-            custom_percentiles=request.custom_percentiles
+            custom_percentiles=request.custom_percentiles,
+            group_by=request.group_by
         )
     except InvalidColumnError as e:
         raise HTTPException(
@@ -659,13 +667,24 @@ async def calculate_smart_table(request: SmartTableRequest) -> SmartTableRespons
             detail=f"Error calculating Smart Table statistics: {str(e)}"
         )
     
-    # 3. Build response
+    # 4. Build response
     analyzed_columns = list(statistics.keys())
+    
+    # Build message based on segmentation
+    if request.group_by:
+        message = (
+            f"Smart Table statistics calculated for {len(analyzed_columns)} variable(s) "
+            f"segmented by '{request.group_by}' ({len(segments)} segments)"
+        )
+    else:
+        message = f"Smart Table statistics calculated for {len(analyzed_columns)} variable(s) with 4-category nested structure"
     
     return SmartTableResponse(
         success=True,
-        message=f"Smart Table statistics calculated for {len(analyzed_columns)} variable(s) with 4-category nested structure",
+        message=message,
         session_id=request.session_id,
         analyzed_columns=analyzed_columns,
+        segments=segments,
+        group_by=request.group_by,
         statistics=statistics
     )

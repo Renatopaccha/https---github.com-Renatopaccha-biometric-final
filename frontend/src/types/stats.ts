@@ -76,6 +76,7 @@ export interface SmartTableRequest {
     session_id: string;
     columns?: string[] | null;
     custom_percentiles?: number[];
+    group_by?: string | null;  // Column to segment results by
 }
 
 /**
@@ -86,7 +87,9 @@ export interface SmartTableResponse {
     message: string;
     session_id: string;
     analyzed_columns: string[];
-    statistics: Record<string, SmartTableColumnStats>;
+    segments: string[];  // Array of segment names (e.g., ["General"] or ["General", "Male", "Female"])
+    group_by: string | null;  // Column used for segmentation (null if no segmentation)
+    statistics: Record<string, Record<string, SmartTableColumnStats>>;  // {variable: {segment: stats}}
 }
 
 // =============================================================================

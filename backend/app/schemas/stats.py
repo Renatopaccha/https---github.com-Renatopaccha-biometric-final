@@ -134,6 +134,10 @@ class SmartTableRequest(BaseModel):
         default=[],
         description="Lista de percentiles personalizados solicitados (0-100)"
     )
+    group_by: Optional[str] = Field(
+        None,
+        description="Columna categórica para segmentar los resultados (ej: 'sexo', 'grupo_tratamiento')"
+    )
     
     @validator('session_id')
     def validate_session_id(cls, v: str) -> str:
@@ -146,19 +150,28 @@ class SmartTableRequest(BaseModel):
             "example": {
                 "session_id": "550e8400-e29b-41d4-a716-446655440000",
                 "columns": ["age", "glucose", "bmi"],
-                "custom_percentiles": [2.5, 99]
+                "custom_percentiles": [2.5, 99],
+                "group_by": "gender"
             }
         }
 
 
 class SmartTableResponse(BaseResponse):
-    """Response del endpoint Tabla Inteligente con estructura anidada en 4 categorías."""
+    """Response del endpoint Tabla Inteligente con estructura anidada en 4 categorías y soporte de segmentación."""
     
     session_id: str = Field(..., description="Session ID del dataset analizado")
     analyzed_columns: List[str] = Field(..., description="Lista de columnas que fueron analizadas")
-    statistics: Dict[str, SmartTableColumnStats] = Field(
+    segments: List[str] = Field(
+        ...,
+        description="Lista de segmentos (ej: ['General'] o ['Hombres', 'Mujeres'])"
+    )
+    group_by: Optional[str] = Field(
+        None,
+        description="Variable usada para segmentar (None si no hay segmentación)"
+    )
+    statistics: Dict[str, Dict[str, SmartTableColumnStats]] = Field(
         ..., 
-        description="Estadísticas por columna en estructura anidada de 4 categorías"
+        description="Estadísticas por columna y segmento: {variable: {segmento: stats}}"
     )
     
     class Config:
@@ -168,15 +181,28 @@ class SmartTableResponse(BaseResponse):
                 "message": "Smart Table statistics calculated successfully",
                 "session_id": "550e8400-e29b-41d4-a716-446655440000",
                 "analyzed_columns": ["glucose"],
+                "segments": ["General", "Male", "Female"],
+                "group_by": "gender",
                 "statistics": {
                     "glucose": {
-                        "variable": "glucose",
-                        "n": 100,
-                        "missing": 5,
-                        "central_tendency": {"mean": 95.5, "median": 92.0, "mode": 90.0, "trimmed_mean_5": 94.2},
-                        "dispersion": {"std_dev": 15.3, "variance": 234.09, "range": 80.0, "iqr": 20.0, "cv": 16.02, "sem": 1.53},
-                        "percentiles": {"q1": 85.0, "q3": 105.0, "p5": 70.0, "p95": 125.0, "deciles": {}},
-                        "shape": {"skewness": 0.45, "kurtosis": -0.12, "normality_test": "Normal", "normality_p_value": 0.234, "test_used": "Shapiro-Wilk"}
+                        "General": {
+                            "variable": "glucose",
+                            "n": 100,
+                            "missing": 5,
+                            "central_tendency": {"mean": 95.5, "median": 92.0, "mode": 90.0, "trimmed_mean_5": 94.2},
+                            "dispersion": {"std_dev": 15.3, "variance": 234.09, "range": 80.0, "iqr": 20.0, "cv": 16.02, "sem": 1.53},
+                            "percentiles": {"q1": 85.0, "q3": 105.0, "p5": 70.0, "p95": 125.0, "deciles": {}},
+                            "shape": {"skewness": 0.45, "kurtosis": -0.12, "normality_test": "Normal", "normality_p_value": 0.234, "test_used": "Shapiro-Wilk"}
+                        },
+                        "Male": {
+                            "variable": "glucose",
+                            "n": 55,
+                            "missing": 2,
+                            "central_tendency": {"mean": 98.2, "median": 95.0},
+                            "dispersion": {"std_dev": 16.1},
+                            "percentiles": {"q1": 87.0, "q3": 108.0},
+                            "shape": {"normality_test": "Normal"}
+                        }
                     }
                 }
             }

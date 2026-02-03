@@ -133,13 +133,242 @@ def _calculate_mode(series: pd.Series) -> Optional[Union[float, List[float]]]:
         return None
 
 
+def _calculate_stats_for_series(
+    series: pd.Series,
+    col: str,
+    custom_percentiles: Optional[List[float]] = None
+) -> SmartTableColumnStats:
+    """
+    Calcula estadísticas para una serie individual.
+    
+    Esta es una función auxiliar que contiene la lógica de cálculo
+    usada tanto para datos completos como para segmentos.
+    
+    Args:
+        series: Serie de Pandas con datos numéricos
+        col: Nombre de la columna (para etiqueta)
+        custom_percentiles: Percentiles personalizados opcionales
+        
+    Returns:
+        SmartTableColumnStats con todas las estadísticas calculadas
+    """
+    # Validar que sea numérico (intentar conversión si no lo es)
+    if not pd.api.types.is_numeric_dtype(series):
+        try:
+            series = pd.to_numeric(series, errors='coerce')
+        except Exception:
+            raise NonNumericColumnError(col)
+    
+    clean = series.dropna()
+    n = len(clean)
+    missing = int(series.isna().sum())
+    
+    # Si no hay datos válidos, retornar estadísticas vacías
+    if n == 0:
+        return SmartTableColumnStats(
+            variable=col,
+            n=0,
+            missing=missing,
+            central_tendency=CentralTendencyStats(),
+            dispersion=DispersionStats(),
+            percentiles=PercentileStats(),
+            shape=ShapeStats(normality_test="Indeterminado")
+        )
+    
+    # =========================================================================
+    # 1. TENDENCIA CENTRAL
+    # =========================================================================
+    mean_val = _safe_float(clean.mean())
+    median_val = _safe_float(clean.median())
+    
+    # Moda: puede ser múltiple
+    mode_result = clean.mode()
+    if len(mode_result) == 0:
+        mode_val = None
+    elif len(mode_result) == 1:
+        mode_val = _safe_float(mode_result.iloc[0])
+    else:
+        # Múltiples modas
+        mode_val = [_safe_float(m) for m in mode_result.tolist()]
+    
+    # Media recortada al 5% (elimina 5% extremos de cada lado)
+    trimmed_mean_val = None
+    if n >= 3:
+        try:
+            trimmed_mean_val = _safe_float(trim_mean(clean, proportiontocut=0.05))
+        except Exception:
+            pass
+    
+    # Suma total
+    sum_val = _safe_float(clean.sum())
+    
+    # Media geométrica (solo para valores > 0)
+    geometric_mean_val = _calculate_geometric_mean(clean)
+    
+    central_tendency = CentralTendencyStats(
+        mean=mean_val,
+        median=median_val,
+        mode=mode_val,
+        trimmed_mean_5=trimmed_mean_val,
+        sum=sum_val,
+        geometric_mean=geometric_mean_val
+    )
+    
+    # =========================================================================
+    # 2. DISPERSIÓN
+    # =========================================================================
+    std_val = _safe_float(clean.std(ddof=1)) if n > 1 else None
+    variance_val = _safe_float(clean.var(ddof=1)) if n > 1 else None
+    
+    # Mínimo y Máximo
+    min_val = _safe_float(clean.min()) if n > 0 else None
+    max_val = _safe_float(clean.max()) if n > 0 else None
+    
+    # Recorrido/Rango: Max - Min (solo si ambos son válidos)
+    range_val = None
+    if min_val is not None and max_val is not None:
+        range_val = _safe_float(max_val - min_val)
+    
+    q1 = _safe_float(clean.quantile(0.25)) if n > 0 else None
+    q3 = _safe_float(clean.quantile(0.75)) if n > 0 else None
+    iqr_val = _safe_float(q3 - q1) if q1 is not None and q3 is not None else None
+    
+    # Coeficiente de variación (CV%): (std / mean) * 100
+    cv_val = None
+    if std_val is not None and mean_val is not None and mean_val != 0:
+        cv_val = _safe_float((std_val / abs(mean_val)) * 100)
+    
+    # Error Estándar de la Media (SEM): std / sqrt(n) - CRUCIAL PARA MEDICINA
+    sem_val = None
+    if std_val is not None and n > 0:
+        sem_val = _safe_float(std_val / np.sqrt(n))
+    
+    dispersion = DispersionStats(
+        std_dev=std_val,
+        variance=variance_val,
+        min=min_val,
+        max=max_val,
+        range=range_val,
+        iqr=iqr_val,
+        cv=cv_val,
+        sem=sem_val
+    )
+    
+    # =========================================================================
+    # 3. PERCENTILES
+    # =========================================================================
+    p5 = _safe_float(clean.quantile(0.05)) if n > 0 else None
+    p95 = _safe_float(clean.quantile(0.95)) if n > 0 else None
+    
+    # Deciles (10, 20, 30, ..., 90)
+    deciles: Optional[Dict[str, float]] = None
+    if n >= 10:
+        deciles = {}
+        for d in range(10, 100, 10):
+            decile_val = _safe_float(clean.quantile(d / 100))
+            if decile_val is not None:
+                deciles[str(d)] = decile_val
+    
+    percentiles_stats = PercentileStats(
+        q1=q1,
+        q3=q3,
+        p5=p5,
+        p95=p95,
+        deciles=deciles
+    )
+    
+    # =========================================================================
+    # 4. FORMA DE LA DISTRIBUCIÓN
+    # =========================================================================
+    # Asimetría y Curtosis con bias=False (estimadores INSESGADOS para muestras clínicas)
+    skewness_val = None
+    kurtosis_val = None
+    
+    if n >= 3:
+        try:
+            # bias=False usa estimador de Fisher (insesgado)
+            skewness_val = _safe_float(skew(clean, bias=False))
+            kurtosis_val = _safe_float(kurtosis(clean, bias=False))
+        except Exception:
+            pass
+    
+    # Test de Normalidad:
+    # - Shapiro-Wilk si n < 50 (más potente para muestras pequeñas)
+    # - Kolmogorov-Smirnov si n >= 50 (mejor para muestras grandes)
+    normality_result = "Indeterminado"
+    normality_p = None
+    test_used = None
+    
+    if n >= 3:
+        try:
+            if n < 50:
+                # Shapiro-Wilk (límite de 5000, pero usamos para n < 50)
+                stat, p_value = shapiro(clean)
+                normality_p = _safe_float(p_value)
+                test_used = "Shapiro-Wilk"
+            else:
+                # Kolmogorov-Smirnov para n >= 50
+                # Normalizar datos para el test
+                mean_test = clean.mean()
+                std_test = clean.std(ddof=1)
+                if std_test > 0:
+                    normalized = (clean - mean_test) / std_test
+                    stat, p_value = kstest(normalized, 'norm')
+                    normality_p = _safe_float(p_value)
+                    test_used = "Kolmogorov-Smirnov"
+            
+            if normality_p is not None:
+                normality_result = "Normal" if normality_p > 0.05 else "No Normal"
+        except Exception as e:
+            print(f"Warning: Normality test failed for {col}: {e}")
+    
+    shape_stats = ShapeStats(
+        skewness=skewness_val,
+        kurtosis=kurtosis_val,
+        normality_test=normality_result,
+        normality_p_value=normality_p,
+        test_used=test_used
+    )
+    
+    # =========================================================================
+    # 5. PERCENTILES PERSONALIZADOS
+    # =========================================================================
+    custom_percentiles_data: Dict[str, float] = {}
+    if custom_percentiles and n > 0:
+        for p in custom_percentiles:
+            # Validar rango 0-100
+            if 0 <= p <= 100:
+                try:
+                    val = np.percentile(clean, p)
+                    key = f"P{p:g}"  # P99, P2.5, etc.
+                    custom_percentiles_data[key] = _safe_float(val)
+                except Exception as e:
+                    print(f"Warning: Failed to calculate percentile {p} for {col}: {e}")
+    
+    # =========================================================================
+    # CONSTRUIR RESULTADO FINAL
+    # =========================================================================
+    return SmartTableColumnStats(
+        variable=col,
+        n=n,
+        missing=missing,
+        central_tendency=central_tendency,
+        dispersion=dispersion,
+        percentiles=percentiles_stats,
+        shape=shape_stats,
+        custom_percentiles_data=custom_percentiles_data
+    )
+
+
 def calculate_smart_table_stats(
     df: pd.DataFrame, 
     columns: Optional[List[str]] = None,
-    custom_percentiles: Optional[List[float]] = None
-) -> Dict[str, SmartTableColumnStats]:
+    custom_percentiles: Optional[List[float]] = None,
+    group_by: Optional[str] = None
+) -> Tuple[Dict[str, Dict[str, SmartTableColumnStats]], List[str]]:
     """
     Calcula estadísticas descriptivas avanzadas en estructura anidada de 4 categorías.
+    Soporta segmentación por variable categórica (group_by).
     
     Esta función implementa el módulo "Tabla Inteligente" con rigor científico
     para usuarios del área de la salud.
@@ -153,16 +382,19 @@ def calculate_smart_table_stats(
     Args:
         df: DataFrame con datos a analizar
         columns: Lista de columnas numéricas. Si None, analiza todas las numéricas.
+        custom_percentiles: Lista de percentiles personalizados (0-100)
+        group_by: Columna categórica para segmentar los resultados. Si None,
+                  calcula sobre todo el dataset con clave "General".
         
     Returns:
-        Dict[str, SmartTableColumnStats]: Estadísticas por columna
+        Tuple[Dict[str, Dict[str, SmartTableColumnStats]], List[str]]:
+            - Diccionario anidado: {variable: {segmento: estadísticas}}
+            - Lista de segmentos (ej: ["General"] o ["General", "Hombres", "Mujeres"])
         
     Raises:
         InvalidColumnError: Si una columna especificada no existe
         NonNumericColumnError: Si una columna no es numérica
     """
-    results: Dict[str, SmartTableColumnStats] = {}
-    
     # Determinar columnas a analizar
     if columns is None:
         target_columns = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -172,218 +404,44 @@ def calculate_smart_table_stats(
                 raise InvalidColumnError(col, df.columns.tolist())
         target_columns = columns
     
-    for col in target_columns:
-        series = df[col]
-        
-        # Validar que sea numérico (intentar conversión si no lo es)
-        if not pd.api.types.is_numeric_dtype(series):
-            try:
-                series = pd.to_numeric(series, errors='coerce')
-            except Exception:
-                raise NonNumericColumnError(col)
-        
-        clean = series.dropna()
-        n = len(clean)
-        missing = int(series.isna().sum())
-        
-        # Si no hay datos válidos, retornar estadísticas vacías
-        if n == 0:
-            results[col] = SmartTableColumnStats(
-                variable=col,
-                n=0,
-                missing=missing,
-                central_tendency=CentralTendencyStats(),
-                dispersion=DispersionStats(),
-                percentiles=PercentileStats(),
-                shape=ShapeStats(normality_test="Indeterminado")
-            )
-            continue
-        
-        # =====================================================================
-        # 1. TENDENCIA CENTRAL
-        # =====================================================================
-        mean_val = _safe_float(clean.mean())
-        median_val = _safe_float(clean.median())
-        
-        # Moda: puede ser múltiple
-        mode_result = clean.mode()
-        if len(mode_result) == 0:
-            mode_val = None
-        elif len(mode_result) == 1:
-            mode_val = _safe_float(mode_result.iloc[0])
-        else:
-            # Múltiples modas
-            mode_val = [_safe_float(m) for m in mode_result.tolist()]
-        
-        # Media recortada al 5% (elimina 5% extremos de cada lado)
-        trimmed_mean_val = None
-        if n >= 3:
-            try:
-                trimmed_mean_val = _safe_float(trim_mean(clean, proportiontocut=0.05))
-            except Exception:
-                pass
-        
-        # Suma total
-        sum_val = _safe_float(clean.sum())
-        
-        # Media geométrica (solo para valores > 0)
-        geometric_mean_val = _calculate_geometric_mean(clean)
-        
-        central_tendency = CentralTendencyStats(
-            mean=mean_val,
-            median=median_val,
-            mode=mode_val,
-            trimmed_mean_5=trimmed_mean_val,
-            sum=sum_val,
-            geometric_mean=geometric_mean_val
-        )
-        
-        # =====================================================================
-        # 2. DISPERSIÓN
-        # =====================================================================
-        std_val = _safe_float(clean.std(ddof=1)) if n > 1 else None
-        variance_val = _safe_float(clean.var(ddof=1)) if n > 1 else None
-        
-        # Mínimo y Máximo
-        min_val = _safe_float(clean.min()) if n > 0 else None
-        max_val = _safe_float(clean.max()) if n > 0 else None
-        
-        # Recorrido/Rango: Max - Min (solo si ambos son válidos)
-        range_val = None
-        if min_val is not None and max_val is not None:
-            range_val = _safe_float(max_val - min_val)
-        
-        q1 = _safe_float(clean.quantile(0.25)) if n > 0 else None
-        q3 = _safe_float(clean.quantile(0.75)) if n > 0 else None
-        iqr_val = _safe_float(q3 - q1) if q1 is not None and q3 is not None else None
-        
-        # Coeficiente de variación (CV%): (std / mean) * 100
-        cv_val = None
-        if std_val is not None and mean_val is not None and mean_val != 0:
-            cv_val = _safe_float((std_val / abs(mean_val)) * 100)
-        
-        # Error Estándar de la Media (SEM): std / sqrt(n) - CRUCIAL PARA MEDICINA
-        sem_val = None
-        if std_val is not None and n > 0:
-            sem_val = _safe_float(std_val / np.sqrt(n))
-        
-        dispersion = DispersionStats(
-            std_dev=std_val,
-            variance=variance_val,
-            min=min_val,
-            max=max_val,
-            range=range_val,
-            iqr=iqr_val,
-            cv=cv_val,
-            sem=sem_val
-        )
-        
-        # =====================================================================
-        # 3. PERCENTILES
-        # =====================================================================
-        p5 = _safe_float(clean.quantile(0.05)) if n > 0 else None
-        p95 = _safe_float(clean.quantile(0.95)) if n > 0 else None
-        
-        # Deciles (10, 20, 30, ..., 90)
-        deciles: Optional[Dict[str, float]] = None
-        if n >= 10:
-            deciles = {}
-            for d in range(10, 100, 10):
-                decile_val = _safe_float(clean.quantile(d / 100))
-                if decile_val is not None:
-                    deciles[str(d)] = decile_val
-        
-        percentiles_stats = PercentileStats(
-            q1=q1,
-            q3=q3,
-            p5=p5,
-            p95=p95,
-            deciles=deciles
-        )
-        
-        # =====================================================================
-        # 4. FORMA DE LA DISTRIBUCIÓN
-        # =====================================================================
-        # Asimetría y Curtosis con bias=False (estimadores INSESGADOS para muestras clínicas)
-        skewness_val = None
-        kurtosis_val = None
-        
-        if n >= 3:
-            try:
-                # bias=False usa estimador de Fisher (insesgado)
-                skewness_val = _safe_float(skew(clean, bias=False))
-                kurtosis_val = _safe_float(kurtosis(clean, bias=False))
-            except Exception:
-                pass
-        
-        # Test de Normalidad:
-        # - Shapiro-Wilk si n < 50 (más potente para muestras pequeñas)
-        # - Kolmogorov-Smirnov si n >= 50 (mejor para muestras grandes)
-        normality_result = "Indeterminado"
-        normality_p = None
-        test_used = None
-        
-        if n >= 3:
-            try:
-                if n < 50:
-                    # Shapiro-Wilk (límite de 5000, pero usamos para n < 50)
-                    stat, p_value = shapiro(clean)
-                    normality_p = _safe_float(p_value)
-                    test_used = "Shapiro-Wilk"
-                else:
-                    # Kolmogorov-Smirnov para n >= 50
-                    # Normalizar datos para el test
-                    mean_test = clean.mean()
-                    std_test = clean.std(ddof=1)
-                    if std_test > 0:
-                        normalized = (clean - mean_test) / std_test
-                        stat, p_value = kstest(normalized, 'norm')
-                        normality_p = _safe_float(p_value)
-                        test_used = "Kolmogorov-Smirnov"
-                
-                if normality_p is not None:
-                    normality_result = "Normal" if normality_p > 0.05 else "No Normal"
-            except Exception as e:
-                print(f"Warning: Normality test failed for {col}: {e}")
-        
-        shape_stats = ShapeStats(
-            skewness=skewness_val,
-            kurtosis=kurtosis_val,
-            normality_test=normality_result,
-            normality_p_value=normality_p,
-            test_used=test_used
-        )
-        
-        # =====================================================================
-        # 5. PERCENTILES PERSONALIZADOS
-        # =====================================================================
-        custom_percentiles_data: Dict[str, float] = {}
-        if custom_percentiles and n > 0:
-            for p in custom_percentiles:
-                # Validar rango 0-100
-                if 0 <= p <= 100:
-                    try:
-                        val = np.percentile(clean, p)
-                        key = f"P{p:g}"  # P99, P2.5, etc.
-                        custom_percentiles_data[key] = _safe_float(val)
-                    except Exception as e:
-                        print(f"Warning: Failed to calculate percentile {p} for {col}: {e}")
-        
-        # =====================================================================
-        # CONSTRUIR RESULTADO FINAL
-        # =====================================================================
-        results[col] = SmartTableColumnStats(
-            variable=col,
-            n=n,
-            missing=missing,
-            central_tendency=central_tendency,
-            dispersion=dispersion,
-            percentiles=percentiles_stats,
-            shape=shape_stats,
-            custom_percentiles_data=custom_percentiles_data
-        )
+    # Validar group_by si se proporciona
+    if group_by and group_by not in df.columns:
+        raise InvalidColumnError(group_by, df.columns.tolist())
     
-    return results
+    # Determinar segmentos
+    if group_by:
+        # Obtener valores únicos del segmento (excluyendo NaN)
+        segment_values = df[group_by].dropna().unique().tolist()
+        segment_values = [str(v) for v in sorted(segment_values)]
+        segments = ["General"] + segment_values
+    else:
+        segments = ["General"]
+    
+    # Estructura de resultados: {variable: {segmento: stats}}
+    results: Dict[str, Dict[str, SmartTableColumnStats]] = {}
+    
+    for col in target_columns:
+        results[col] = {}
+        
+        for segment in segments:
+            # Filtrar DataFrame según el segmento
+            if segment == "General":
+                df_subset = df
+            else:
+                df_subset = df[df[group_by].astype(str) == segment]
+            
+            series = df_subset[col]
+            
+            # Calcular estadísticas usando la función auxiliar
+            stats = _calculate_stats_for_series(
+                series=series,
+                col=col,
+                custom_percentiles=custom_percentiles
+            )
+            
+            results[col][segment] = stats
+    
+    return results, segments
 
 
 def _is_binary_categorical(series: pd.Series) -> Tuple[bool, Optional[pd.Series]]:

@@ -203,6 +203,8 @@ export async function getCrosstabStats(
  * 
  * @param sessionId - Dataset session identifier  
  * @param columns - Optional array of numeric column names to analyze
+ * @param customPercentiles - Optional array of custom percentile values (0-100)
+ * @param groupBy - Optional column name to segment results by
  * @returns Promise with SmartTableResponse containing nested statistics
  * 
  * Categories returned:
@@ -214,12 +216,14 @@ export async function getCrosstabStats(
 export async function getSmartTableStats(
     sessionId: string,
     columns?: string[],
-    customPercentiles?: number[]
+    customPercentiles?: number[],
+    groupBy?: string
 ): Promise<SmartTableResponse> {
     const requestBody: SmartTableRequest = {
         session_id: sessionId,
         columns: columns ?? null,
         custom_percentiles: customPercentiles,
+        group_by: groupBy ?? null,
     };
 
     const response = await fetch(`${API_BASE_URL}/api/v1/stats/smart-table`, {
@@ -240,3 +244,4 @@ export async function getSmartTableStats(
     const data: SmartTableResponse = await response.json();
     return data;
 }
+
