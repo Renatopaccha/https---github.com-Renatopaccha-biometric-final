@@ -70,6 +70,16 @@ export interface SmartTableColumnStats {
 }
 
 /**
+ * Filter Rule for data filtering
+ */
+export interface FilterRule {
+    id: string;
+    column: string;
+    operator: '>' | '<' | '>=' | '<=' | '==' | '!=';
+    value: number;
+}
+
+/**
  * Smart Table API Request
  */
 export interface SmartTableRequest {
@@ -77,6 +87,8 @@ export interface SmartTableRequest {
     columns?: string[] | null;
     custom_percentiles?: number[];
     group_by?: string | null;  // Column to segment results by
+    filters?: FilterRule[];    // Data filter rules
+    filter_logic?: 'AND' | 'OR';  // How to combine filter rules
 }
 
 /**

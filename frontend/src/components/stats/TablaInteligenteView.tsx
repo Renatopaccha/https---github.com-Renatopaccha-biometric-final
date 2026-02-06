@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Info, Loader2, Users } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Filter, Info, Loader2, Plus, Trash2, Users } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ActionToolbar } from './ActionToolbar';
 import { getSmartTableStats } from '../../api/stats';
@@ -9,7 +9,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../ui/tooltip';
-import type { SmartTableColumnStats, SmartTableResponse } from '../../types/stats';
+import type { SmartTableColumnStats, SmartTableResponse, FilterRule } from '../../types/stats';
+
+// =============================================================================
+// FILTER OPERATORS - Human Readable Labels
+// =============================================================================
+const filterOperators = [
+  { value: '>', label: 'Mayor que' },
+  { value: '<', label: 'Menor que' },
+  { value: '>=', label: 'Mayor o igual' },
+  { value: '<=', label: 'Menor o igual' },
+  { value: '==', label: 'Igual a' },
+  { value: '!=', label: 'Diferente de' },
+] as const;
 
 interface TablaInteligenteViewProps {
   onBack: () => void;
@@ -162,6 +174,13 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   // Segmentation state
   const [segmentBy, setSegmentBy] = useState<string>('');
   const [showSegmentDropdown, setShowSegmentDropdown] = useState(false);
+  const [activeSegment, setActiveSegment] = useState<string>('General');
+
+  // Filter state
+  const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
+  const [filterActive, setFilterActive] = useState(false);
+  const [filterLogic, setFilterLogic] = useState<'AND' | 'OR'>('AND');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
 
   // Data state
   const [data, setData] = useState<SmartTableResponse | null>(null);
@@ -209,12 +228,16 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   const varsRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
 
-  // Auto-select first 3 variables on mount
+  // Auto-select ALL variables on mount (default behavior: show everything)
   useEffect(() => {
     if (availableVars.length > 0 && selectedVars.length === 0) {
-      setSelectedVars(availableVars.slice(0, Math.min(3, availableVars.length)));
+      setSelectedVars([...availableVars]);
     }
   }, [availableVars]);
+
+  // Helper functions for Select All / Deselect All
+  const selectAllVariables = () => setSelectedVars([...availableVars]);
+  const deselectAllVariables = () => setSelectedVars([]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -242,20 +265,27 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     setError(null);
 
     try {
+      // Prepare active filters only if filter is enabled
+      const activeFilters = filterActive && filterRules.length > 0 ? filterRules : undefined;
+
       const response = await getSmartTableStats(
         sessionId,
         selectedVars,
         percentiles.customPercentileEnabled ? [customPercentileValue] : undefined,
-        segmentBy || undefined  // Pass segmentBy to API
+        segmentBy || undefined,
+        activeFilters,
+        filterLogic
       );
       setData(response);
+      // Reset activeSegment to General when data changes
+      setActiveSegment('General');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar estadísticas');
       console.error('Smart Table fetch error:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId, selectedVars, percentiles.customPercentileEnabled, customPercentileValue, segmentBy]);
+  }, [sessionId, selectedVars, percentiles.customPercentileEnabled, customPercentileValue, segmentBy, filterActive, filterRules, filterLogic]);
 
   // Debounce fetch
   useEffect(() => {
@@ -271,13 +301,40 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     );
   };
 
-  // Get statistics for a variable and segment (new signature for segmentation support)
-  const getStats = (variable: string, segment?: string): SmartTableColumnStats | null => {
+  // =====================================================
+  // FILTER MANAGEMENT FUNCTIONS
+  // =====================================================
+  const addFilterRule = () => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : Date.now().toString();
+    const defaultColumn = availableVars.length > 0 ? availableVars[0] : '';
+    setFilterRules([...filterRules, { id, column: defaultColumn, operator: '>', value: 0 }]);
+  };
+
+  const removeLastRule = () => {
+    if (filterRules.length > 0) {
+      setFilterRules(filterRules.slice(0, -1));
+    }
+  };
+
+  const clearAllRules = () => {
+    setFilterRules([]);
+  };
+
+  const updateRule = (id: string, field: keyof FilterRule, value: string | number) => {
+    setFilterRules(prevRules => prevRules.map(rule => (
+      rule.id === id ? { ...rule, [field]: value } : rule
+    )));
+  };
+
+  // Get statistics for a variable, using activeSegment when segmented
+  const getStats = (variable: string): SmartTableColumnStats | null => {
     if (!data?.statistics) return null;
     const varStats = data.statistics[variable];
     if (!varStats) return null;
-    // If segmented, get specific segment stats; otherwise get "General"
-    const targetSegment = segment || 'General';
+    // Use activeSegment when segmented, otherwise 'General'
+    const targetSegment = hasSegmentation ? activeSegment : 'General';
     return varStats[targetSegment] || null;
   };
 
@@ -349,7 +406,29 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
             </button>
 
             {showVarsDropdown && (
-              <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
+              <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-80 overflow-auto">
+                {/* Select All / Deselect All Buttons */}
+                <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-2 flex gap-2 z-10">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      selectAllVariables();
+                    }}
+                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-teal-50 text-teal-700 rounded hover:bg-teal-100 transition-colors"
+                  >
+                    Seleccionar todo
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deselectAllVariables();
+                    }}
+                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
+                  >
+                    Deseleccionar todo
+                  </button>
+                </div>
+
                 {availableVars.length === 0 ? (
                   <div className="px-4 py-3 text-sm text-slate-500">
                     No hay variables numéricas disponibles
@@ -439,6 +518,153 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
             </span>
           </div>
         )}
+
+        {/* Advanced Filters Panel */}
+        <div className="ml-4 mt-3">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm max-w-3xl">
+            {/* Filter Header - Collapsible */}
+            <button
+              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors rounded-lg"
+            >
+              <Filter className="w-4 h-4 text-teal-600" />
+              <h3 className="text-sm font-bold text-slate-900 flex-1 text-left" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                Filtros Avanzados
+              </h3>
+              {filterActive && filterRules.length > 0 && (
+                <span className="text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-medium">
+                  {filterRules.length} regla{filterRules.length !== 1 ? 's' : ''}
+                </span>
+              )}
+              <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform ${isFilterExpanded ? 'rotate-90' : ''}`} />
+            </button>
+
+            {/* Filter Content - Expandable */}
+            {isFilterExpanded && (
+              <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-lg">
+                {/* Activate Filter Toggle */}
+                <div className="flex items-center gap-4 mb-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filterActive}
+                      onChange={(e) => setFilterActive(e.target.checked)}
+                      className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-xs font-medium text-slate-700" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Activar Filtro</span>
+                  </label>
+                </div>
+
+                {/* Filter Logic (AND/OR) */}
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-xs text-slate-600" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Combinar reglas con:</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={filterLogic === 'AND'}
+                      onChange={() => setFilterLogic('AND')}
+                      className="text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-xs font-medium text-slate-900">Y (AND)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={filterLogic === 'OR'}
+                      onChange={() => setFilterLogic('OR')}
+                      className="text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-xs font-medium text-slate-900">O (OR)</span>
+                  </label>
+                </div>
+
+                {/* Filter Rules List */}
+                <div className="space-y-2 mb-3">
+                  {filterRules.map((rule) => (
+                    <div key={rule.id} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200">
+                      {/* Column Selector */}
+                      <select
+                        value={rule.column}
+                        onChange={(e) => updateRule(rule.id, 'column', e.target.value)}
+                        className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                      >
+                        {availableVars.map((variable) => (
+                          <option key={variable} value={variable}>{variable}</option>
+                        ))}
+                      </select>
+
+                      {/* Operator Selector - Human Readable */}
+                      <select
+                        value={rule.operator}
+                        onChange={(e) => updateRule(rule.id, 'operator', e.target.value)}
+                        className="w-36 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                      >
+                        {filterOperators.map((op) => (
+                          <option key={op.value} value={op.value}>{op.label}</option>
+                        ))}
+                      </select>
+
+                      {/* Value Input with +/- Buttons */}
+                      <div className="flex items-center">
+                        <input
+                          type="number"
+                          value={rule.value}
+                          onChange={(e) => updateRule(rule.id, 'value', parseFloat(e.target.value) || 0)}
+                          className="w-24 px-2 py-1.5 bg-white border border-slate-300 rounded-l text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          style={{ fontFamily: 'JetBrains Mono, Roboto Mono, monospace' }}
+                          step="0.01"
+                        />
+                        <div className="flex flex-col border border-l-0 border-slate-300 rounded-r overflow-hidden">
+                          <button
+                            onClick={() => updateRule(rule.id, 'value', rule.value + 1)}
+                            className="px-1 py-0 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs leading-none"
+                          >
+                            +
+                          </button>
+                          <button
+                            onClick={() => updateRule(rule.id, 'value', rule.value - 1)}
+                            className="px-1 py-0 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs leading-none border-t border-slate-300"
+                          >
+                            −
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Filter Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={addFilterRule}
+                    className="px-3 py-1.5 bg-teal-600 text-white rounded text-xs hover:bg-teal-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                  >
+                    <Plus className="w-3 h-3" />
+                    Agregar Regla
+                  </button>
+                  <button
+                    onClick={removeLastRule}
+                    className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-xs hover:bg-slate-300 transition-colors flex items-center gap-1.5"
+                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Eliminar Última
+                  </button>
+                  <button
+                    onClick={clearAllRules}
+                    className="px-3 py-1.5 text-red-600 rounded text-xs hover:bg-red-50 transition-colors"
+                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                  >
+                    Limpiar Reglas
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main Content Area */}
@@ -608,6 +834,32 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
             </div>
           )}
 
+          {/* Segment Tabs - Only show when segmented */}
+          {!isLoading && !error && hasSegmentation && (
+            <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-1 px-4 border-b border-slate-200 overflow-x-auto">
+                <span className="text-xs text-slate-500 mr-2 py-3 whitespace-nowrap">
+                  Segmentado por: <span className="font-medium text-slate-700">{segmentBy}</span>
+                </span>
+                {segments.map((segment) => (
+                  <button
+                    key={segment}
+                    onClick={() => setActiveSegment(segment)}
+                    className={`px-4 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${activeSegment === segment
+                      ? 'text-teal-700'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    {segment}
+                    {activeSegment === segment && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-600"></div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Results Table */}
           {isLoading ? (
             <TableSkeleton rows={6} cols={selectedVars.length + 1} />
@@ -616,99 +868,6 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
               <p className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                 Selecciona al menos una variable para ver los estadísticos
               </p>
-            </div>
-          ) : data && hasSegmentation ? (
-            /* ============================================= */
-            /* SEGMENTED TABLE VIEW - Variable | Grupo | Stats */
-            /* ============================================= */
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border-b border-slate-200">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-slate-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    Resultados por Grupo
-                  </h3>
-                  <span className="text-xs text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-200">
-                    {selectedVars.length} variable(s) × {segments.length} grupos
-                  </span>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead className="bg-gradient-to-b from-indigo-50 to-indigo-100 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-bold text-indigo-900 border-b-2 border-indigo-300 sticky left-0 bg-indigo-50 z-10" style={{ fontFamily: 'Inter, system-ui, sans-serif', minWidth: '140px' }}>
-                        Variable
-                      </th>
-                      <th className="px-4 py-3 text-left font-bold text-indigo-900 border-b-2 border-indigo-300" style={{ fontFamily: 'Inter, system-ui, sans-serif', minWidth: '100px' }}>
-                        Grupo
-                      </th>
-                      {tendenciaCentral.n && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">N</th>}
-                      {tendenciaCentral.media && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Media</th>}
-                      {tendenciaCentral.mediana && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Mediana</th>}
-                      {dispersion.desvTipica && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">DE</th>}
-                      {dispersion.coefVariacion && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">CV%</th>}
-                      {dispersion.rangoIntercuartilico && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">RIQ</th>}
-                      {dispersion.errorEstMedia && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">SEM</th>}
-                      {percentiles.cuartiles && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Q1</th>}
-                      {percentiles.cuartiles && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Q3</th>}
-                      {formaDistribucion.pruebaNormalidad && <th className="px-3 py-3 text-center font-medium text-indigo-800 border-b-2 border-indigo-300 text-sm">Normalidad</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedVars.map((variable, varIdx) => (
-                      segments.map((segment, segIdx) => {
-                        const stats = getStats(variable, segment);
-                        const isFirstInGroup = segIdx === 0;
-                        const isLastInGroup = segIdx === segments.length - 1;
-                        const badge = stats ? getNormalityBadge(stats.shape.normality_test) : { bg: 'bg-gray-100', text: 'text-gray-600', label: '-' };
-
-                        return (
-                          <tr
-                            key={`${variable}-${segment}`}
-                            className={`
-                              ${isFirstInGroup ? 'border-t-2 border-slate-300' : ''} 
-                              ${varIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}
-                              hover:bg-indigo-50/30 transition-colors
-                            `}
-                          >
-                            {/* Variable name - show only on first row of each group or with faded style */}
-                            <td className={`px-4 py-2.5 text-sm border-b border-slate-200 sticky left-0 ${varIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                              <span className={isFirstInGroup ? 'font-semibold text-slate-900' : 'text-slate-400 text-xs'}>
-                                {isFirstInGroup ? variable : '↳ ' + variable}
-                              </span>
-                            </td>
-                            {/* Segment/Group name */}
-                            <td className="px-4 py-2.5 text-sm border-b border-slate-200">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${segment === 'General' ? 'bg-gray-100 text-gray-700' : 'bg-indigo-100 text-indigo-700'
-                                }`}>
-                                {segment}
-                              </span>
-                            </td>
-                            {/* Stats cells */}
-                            {tendenciaCentral.n && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{stats?.n ?? '-'}</td>}
-                            {tendenciaCentral.media && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.central_tendency.mean)}</td>}
-                            {tendenciaCentral.mediana && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.central_tendency.median)}</td>}
-                            {dispersion.desvTipica && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.std_dev)}</td>}
-                            {dispersion.coefVariacion && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.cv)}</td>}
-                            {dispersion.rangoIntercuartilico && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.iqr)}</td>}
-                            {dispersion.errorEstMedia && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.dispersion.sem)}</td>}
-                            {percentiles.cuartiles && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.percentiles.q1)}</td>}
-                            {percentiles.cuartiles && <td className="px-3 py-2.5 text-sm text-center border-b border-slate-200 font-mono">{formatValue(stats?.percentiles.q3)}</td>}
-                            {formaDistribucion.pruebaNormalidad && (
-                              <td className="px-3 py-2.5 text-center border-b border-slate-200">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
-                                  {badge.label}
-                                </span>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           ) : data && (
             /* ============================================= */

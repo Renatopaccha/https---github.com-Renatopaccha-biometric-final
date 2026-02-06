@@ -12,6 +12,7 @@ import type {
     ContingencyTableResponse,
     SmartTableRequest,
     SmartTableResponse,
+    FilterRule,
 } from '../types/stats';
 
 // Backend base URL - adjust according to your environment
@@ -217,13 +218,17 @@ export async function getSmartTableStats(
     sessionId: string,
     columns?: string[],
     customPercentiles?: number[],
-    groupBy?: string
+    groupBy?: string,
+    filters?: FilterRule[],
+    filterLogic?: 'AND' | 'OR'
 ): Promise<SmartTableResponse> {
     const requestBody: SmartTableRequest = {
         session_id: sessionId,
         columns: columns ?? null,
         custom_percentiles: customPercentiles,
         group_by: groupBy ?? null,
+        filters: filters && filters.length > 0 ? filters : undefined,
+        filter_logic: filters && filters.length > 0 ? (filterLogic || 'AND') : undefined,
     };
 
     const response = await fetch(`${API_BASE_URL}/api/v1/stats/smart-table`, {
