@@ -11,8 +11,8 @@ import {
 } from '../ui/tooltip';
 import type { SmartTableColumnStats, SmartTableResponse, FilterRule } from '../../types/stats';
 
-// Export libraries (dynamic imports for better bundle splitting)
-import * as XLSX from 'xlsx';
+// Export libraries (xlsx-js-style for styled exports)
+import * as XLSX from 'xlsx-js-style';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -348,7 +348,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   // =====================================================
 
   /**
-   * Export table data to Excel (.xlsx)
+   * Export table data to Excel (.xlsx) with professional corporate styling
    */
   const handleExportExcel = useCallback(() => {
     if (!data || selectedVars.length === 0) {
@@ -370,8 +370,53 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
         firstVarSegments: data.statistics[selectedVars[0]] ? Object.keys(data.statistics[selectedVars[0]]) : 'N/A'
       });
 
-      // Build data rows - each row is a statistic, columns are variables
-      const statsRows: Record<string, string | number>[] = [];
+      // =====================================================
+      // CORPORATE STYLE DEFINITIONS
+      // =====================================================
+
+      // Header style: Teal-700 background, white bold text, centered
+      const headerStyle = {
+        fill: { fgColor: { rgb: '0F766E' } }, // Tailwind teal-700
+        font: { bold: true, color: { rgb: 'FFFFFF' }, name: 'Arial', sz: 11 },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: 'B0B0B0' } },
+          bottom: { style: 'thin', color: { rgb: 'B0B0B0' } },
+          left: { style: 'thin', color: { rgb: 'B0B0B0' } },
+          right: { style: 'thin', color: { rgb: 'B0B0B0' } },
+        },
+      };
+
+      // First column style: Bold text, left aligned
+      const firstColumnStyle = {
+        fill: { fgColor: { rgb: 'F0FDFA' } }, // Tailwind teal-50
+        font: { bold: true, color: { rgb: '334155' }, name: 'Arial', sz: 10 }, // Slate-700
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: 'D1D5DB' } },
+          bottom: { style: 'thin', color: { rgb: 'D1D5DB' } },
+          left: { style: 'thin', color: { rgb: 'D1D5DB' } },
+          right: { style: 'thin', color: { rgb: 'D1D5DB' } },
+        },
+      };
+
+      // Data cell style: Centered, thin borders
+      const dataCellStyle = {
+        font: { color: { rgb: '334155' }, name: 'Arial', sz: 10 }, // Slate-700
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          right: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        },
+      };
+
+      // Alternate row style (even rows) with subtle teal background
+      const alternateRowStyle = {
+        ...dataCellStyle,
+        fill: { fgColor: { rgb: 'F0FDFA' } }, // Tailwind teal-50
+      };
 
       // Define all possible statistics with their labels
       const allStats = [
@@ -408,6 +453,9 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
         { key: 'normality_test', label: 'Test de Normalidad', getter: (s: SmartTableColumnStats) => s.shape?.normality_test },
       ];
 
+      // Build data rows - each row is a statistic, columns are variables
+      const statsRows: Record<string, string | number>[] = [];
+
       // Build rows
       allStats.forEach(stat => {
         const row: Record<string, string | number> = { 'Estadístico': stat.label };
@@ -427,12 +475,52 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
 
       console.log('Excel Export: Built rows', statsRows.length, 'Sample:', statsRows[0]);
 
-      // Create worksheet
+      // Create worksheet with data
       const worksheet = XLSX.utils.json_to_sheet(statsRows);
 
-      // Set column widths
-      const colWidths = [{ wch: 25 }, ...selectedVars.map(() => ({ wch: 15 }))];
-      worksheet['!cols'] = colWidths;
+      // =====================================================
+      // APPLY STYLES TO ALL CELLS
+      // =====================================================
+
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      const numCols = selectedVars.length + 1; // +1 for "Estadístico" column
+      const numRows = allStats.length + 1; // +1 for header row
+
+      // Iterate through all cells and apply styles
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+          const cell = worksheet[cellAddress];
+
+          if (!cell) continue;
+
+          // Row 0 = Header row
+          if (R === 0) {
+            cell.s = headerStyle;
+          }
+          // Column A (first column) - Estadístico names
+          else if (C === 0) {
+            cell.s = firstColumnStyle;
+          }
+          // Data cells - alternating row colors
+          else {
+            cell.s = R % 2 === 0 ? alternateRowStyle : dataCellStyle;
+          }
+        }
+      }
+
+      // =====================================================
+      // SET COLUMN WIDTHS AND ROW HEIGHTS
+      // =====================================================
+
+      // Column A wider for statistic names, data columns uniform
+      worksheet['!cols'] = [
+        { wch: 30 }, // Estadístico column (wider)
+        ...selectedVars.map(() => ({ wch: 15 })), // Data columns
+      ];
+
+      // Set row height for header (slightly taller)
+      worksheet['!rows'] = [{ hpt: 22 }]; // Header row height
 
       // Create workbook
       const workbook = XLSX.utils.book_new();
@@ -455,7 +543,7 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   }, [data, selectedVars, activeSegment, hasSegmentation]);
 
   /**
-   * Export table data to PDF report
+   * Export table data to PDF report with professional corporate styling
    */
   const handleExportPDF = useCallback(() => {
     if (!data || selectedVars.length === 0) {
@@ -476,17 +564,30 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const doc = new jsPDF('landscape', 'mm', 'a4') as any;
 
-      // Colors matching the app theme
-      const tealColor: [number, number, number] = [13, 148, 136]; // teal-600
-      const darkTeal: [number, number, number] = [15, 118, 110]; // teal-700
+      // =====================================================
+      // CORPORATE COLOR PALETTE (Matching App Theme)
+      // =====================================================
+      const colors = {
+        teal700: [15, 118, 110] as [number, number, number],   // Header background
+        teal50: [240, 253, 250] as [number, number, number],   // Alternate row background
+        slate700: [51, 65, 85] as [number, number, number],    // Body text
+        slate400: [148, 163, 184] as [number, number, number], // Secondary text
+        gray300: [209, 213, 219] as [number, number, number],  // Table borders
+        white: [255, 255, 255] as [number, number, number],    // Header text
+      };
 
-      // Add title
+      // =====================================================
+      // DOCUMENT HEADER
+      // =====================================================
       const segmentLabel = hasSegmentation ? ` - ${targetSegment}` : '';
-      doc.setFontSize(18);
-      doc.setTextColor(...darkTeal);
+
+      // Title with corporate color
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(...colors.teal700);
       doc.text(`Reporte de Análisis Bioestadístico${segmentLabel}`, 14, 20);
 
-      // Add date
+      // Subtitle/metadata
       const now = new Date();
       const dateFormatted = now.toLocaleDateString('es-ES', {
         year: 'numeric',
@@ -495,29 +596,50 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
         hour: '2-digit',
         minute: '2-digit'
       });
+
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
+      doc.setTextColor(...colors.slate400);
       doc.text(`Generado: ${dateFormatted}`, 14, 28);
-      doc.text(`Variables analizadas: ${selectedVars.length}`, 14, 34);
+
+      // Variables info with icon-like bullet
+      doc.setTextColor(...colors.slate700);
+      doc.text(`● Variables analizadas: ${selectedVars.length}`, 14, 35);
+      if (hasSegmentation) {
+        doc.text(`● Segmento activo: ${targetSegment}`, 14, 41);
+      }
+
+      // Horizontal separator line
+      const startY = hasSegmentation ? 46 : 40;
+      doc.setDrawColor(...colors.gray300);
+      doc.setLineWidth(0.3);
+      doc.line(14, startY, doc.internal.pageSize.width - 14, startY);
+
+      // =====================================================
+      // TABLE CONFIGURATION
+      // =====================================================
 
       // Define columns
       const columns = ['Estadístico', ...selectedVars];
 
-      // Define all statistics
+      // Define all statistics (comprehensive list)
       const allStats = [
         { label: 'N (Conteo)', getter: (s: SmartTableColumnStats) => s.n },
         { label: 'Media', getter: (s: SmartTableColumnStats) => s.central_tendency?.mean },
         { label: 'Mediana', getter: (s: SmartTableColumnStats) => s.central_tendency?.median },
-        { label: 'Desv. Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.std_dev },
+        { label: 'Desviación Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.std_dev },
         { label: 'Varianza', getter: (s: SmartTableColumnStats) => s.dispersion?.variance },
         { label: 'Mínimo', getter: (s: SmartTableColumnStats) => s.dispersion?.min },
         { label: 'Máximo', getter: (s: SmartTableColumnStats) => s.dispersion?.max },
         { label: 'Rango', getter: (s: SmartTableColumnStats) => s.dispersion?.range },
+        { label: 'Coef. Variación (%)', getter: (s: SmartTableColumnStats) => s.dispersion?.cv },
+        { label: 'Error Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.sem },
         { label: 'Q1 (25%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q1 },
         { label: 'Q3 (75%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q3 },
+        { label: 'Rango Intercuartil', getter: (s: SmartTableColumnStats) => s.dispersion?.iqr },
         { label: 'Asimetría', getter: (s: SmartTableColumnStats) => s.shape?.skewness },
         { label: 'Curtosis', getter: (s: SmartTableColumnStats) => s.shape?.kurtosis },
-        { label: 'Normalidad', getter: (s: SmartTableColumnStats) => s.shape?.normality_test },
+        { label: 'Test Normalidad', getter: (s: SmartTableColumnStats) => s.shape?.normality_test },
       ];
 
       // Build table data
@@ -537,51 +659,100 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
         return row;
       });
 
-      // Generate table using autoTable
+      // =====================================================
+      // GENERATE TABLE WITH CORPORATE STYLING
+      // =====================================================
       autoTable(doc, {
         head: [columns],
         body: tableData,
-        startY: 42,
+        startY: startY + 4,
+        theme: 'grid', // Clean grid theme
         styles: {
+          font: 'helvetica',
           fontSize: 8,
           cellPadding: 3,
           overflow: 'linebreak',
+          lineColor: colors.gray300,
+          lineWidth: 0.1,
+          textColor: colors.slate700,
         },
         headStyles: {
-          fillColor: tealColor,
-          textColor: [255, 255, 255],
+          fillColor: colors.teal700, // Teal-700 header
+          textColor: colors.white,
           fontStyle: 'bold',
           halign: 'center',
+          valign: 'middle',
+          cellPadding: 4,
+        },
+        bodyStyles: {
+          halign: 'center',
+          valign: 'middle',
         },
         columnStyles: {
-          0: { fontStyle: 'bold', halign: 'left', cellWidth: 35 },
+          0: {
+            fontStyle: 'bold',
+            halign: 'left',
+            cellWidth: 40,
+            fillColor: colors.teal50, // Light teal for first column
+          },
         },
         alternateRowStyles: {
-          fillColor: [240, 253, 250], // teal-50
+          fillColor: colors.teal50, // Teal-50 for alternate rows
         },
+        tableLineColor: colors.gray300,
+        tableLineWidth: 0.1,
         margin: { left: 14, right: 14 },
+        didDrawPage: (hookData) => {
+          // Add page header on subsequent pages
+          if (hookData.pageNumber > 1) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor(...colors.teal700);
+            doc.text('Reporte de Análisis Bioestadístico (continuación)', 14, 14);
+          }
+        },
       });
 
-      // Add footer
+      // =====================================================
+      // PROFESSIONAL FOOTER ON ALL PAGES
+      // =====================================================
       const pageCount = doc.internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
+
+        // Footer line
+        doc.setDrawColor(...colors.gray300);
+        doc.setLineWidth(0.3);
+        const footerY = doc.internal.pageSize.height - 15;
+        doc.line(14, footerY, doc.internal.pageSize.width - 14, footerY);
+
+        // Footer text
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
+        doc.setTextColor(...colors.slate400);
         doc.text(
           `Biometric App - Análisis Estadístico | Página ${i} de ${pageCount}`,
           doc.internal.pageSize.width / 2,
-          doc.internal.pageSize.height - 10,
+          doc.internal.pageSize.height - 8,
           { align: 'center' }
+        );
+
+        // Add date on left side of footer
+        doc.text(
+          dateFormatted,
+          14,
+          doc.internal.pageSize.height - 8
         );
       }
 
-      // Generate filename with date
+      // =====================================================
+      // SAVE PDF
+      // =====================================================
       const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
       const filename = `Biometric_Report_${dateStr}.pdf`;
 
-      // Download
       doc.save(filename);
+      console.log('PDF Export: File saved as', filename);
 
     } catch (error) {
       console.error('Error exporting to PDF:', error);

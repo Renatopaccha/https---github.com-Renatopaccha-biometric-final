@@ -1,0 +1,30 @@
+{
+  "id": "420acffc-4fb6-4fb8-8ed1-f2fd9419a6b1",
+  "session_id": "06068387-1eb7-494b-9113-66b4c0ff5b1b",
+  "title": "Hola",
+  "created_at": "2026-02-06T11:18:51.776536",
+  "updated_at": "2026-02-06T11:23:16.867051",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hola",
+      "timestamp": "2026-02-06T11:18:51.791974"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! Soy tu Consultor Experto en Bioestadística y Ciencia de Datos Clínicos de la app \"Biometric\". Estoy aquí para ayudarte a navegar por tus datos, diseñar tus análisis y, lo más importante, a descubrir las historias y las verdades que tus números guardan.\n\nMi objetivo es ir más allá de las respuestas superficiales, guiándote para que entiendas el \"por qué\" detrás de cada decisión estadística y cada hallazgo.\n\nEstoy listo para sumergirme en tus desafíos de investigación. Por favor, cuéntame:\n\n*   **¿Cuál es el problema o la pregunta de investigación principal que te trae por aquí hoy?**\n*   **¿Qué tipo de datos estás manejando (ensayo clínico, estudio observacional, datos de laboratorio, etc.)?**\n*   **¿Ya tienes alguna idea de los análisis que te gustaría realizar, o necesitas ayuda para definir el mejor enfoque?**\n\n¡Espero tus detalles para que podamos comenzar a explorar juntos!",
+      "timestamp": "2026-02-06T11:18:51.794696"
+    },
+    {
+      "role": "user",
+      "content": "Puedes analizar mis datos?",
+      "timestamp": "2026-02-06T11:23:16.787022"
+    },
+    {
+      "role": "assistant",
+      "content": "Lo siento, ocurrió un error al procesar tu solicitud. Por favor, intenta nuevamente.",
+      "timestamp": "2026-02-06T11:23:16.866939"
+    }
+  ],
+  "model": "gemini-2.5-flash"
+}

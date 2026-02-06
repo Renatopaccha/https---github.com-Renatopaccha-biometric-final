@@ -575,8 +575,9 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
             
             if history:
                 for msg in history:
-                    role = msg.get("role", "user")
-                    content = msg.get("content", "")
+                    # Access as Pydantic object attributes (not dict)
+                    role = msg.role if hasattr(msg, 'role') else msg.get("role", "user")
+                    content = msg.content if hasattr(msg, 'content') else msg.get("content", "")
                     
                     if role == "user":
                         conversation_parts.append(f"Usuario: {content}")

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "420acffc-4fb6-4fb8-8ed1-f2fd9419a6b1",
+    "title": "Hola",
+    "timestamp": "2026-02-06T11:23:16.867051",
+    "message_count": 4,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "bb00362f-1b93-4021-b8ab-2239c9fa24fe",
+    "title": "Test",
+    "timestamp": "2026-02-06T11:27:54.935558",
+    "message_count": 4,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "7bb38fe0-262a-4b92-85b6-e78cec388ca7",
+    "title": "Hola",
+    "timestamp": "2026-02-06T11:32:12.442338",
+    "message_count": 4,
+    "model": "gemini-2.5-flash"
+  }
+]
