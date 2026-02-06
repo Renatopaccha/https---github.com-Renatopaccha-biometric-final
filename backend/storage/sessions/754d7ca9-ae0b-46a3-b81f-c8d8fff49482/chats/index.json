@@ -33,5 +33,19 @@
     "timestamp": "2026-02-06T12:41:28.354194",
     "message_count": 2,
     "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "79ca9f2b-3bac-4a64-b1a8-cc3ef540cdae",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-02-06T13:00:29.748017",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "1c9dfe81-9351-44b9-9f44-aafa8cfb855c",
+    "title": "Actúa como un experto bioestadístico. Analiza la s...",
+    "timestamp": "2026-02-06T13:01:21.145825",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
   }
 ]

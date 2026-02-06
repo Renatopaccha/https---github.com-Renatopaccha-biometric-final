@@ -839,49 +839,74 @@ El usuario ha sido transferido al chat principal. Mantén este contexto en memor
             </div>
           )}
 
-          {/* Panel de Análisis IA */}
+          {/* Panel de Análisis IA - Diseño Mejorado */}
           {(analysisResult || isAnalyzing) && (
-            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-200 shadow-sm relative overflow-hidden transition-all duration-300">
-              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+            <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-white rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-indigo-100 overflow-hidden relative">
+                {/* Barra decorativa superior */}
+                <div className="h-1 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
 
-              <div className="p-6 relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
-                      {isAnalyzing ? (
-                        <Loader2 className="w-5 h-5 text-white animate-spin" />
-                      ) : (
-                        <Sparkles className="w-5 h-5 text-white" />
-                      )}
+                {/* Fondo decorativo sutil */}
+                <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-indigo-50 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
+
+                <div className="p-6 relative z-10">
+                  <div className="flex items-start gap-5">
+                    {/* Icono con halo */}
+                    <div className="flex-shrink-0">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm border border-indigo-50 ${isAnalyzing ? 'bg-indigo-50' : 'bg-white'
+                        }`}>
+                        {isAnalyzing ? (
+                          <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-6 h-6 text-indigo-600 fill-indigo-50" />
+                        )}
+                      </div>
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {isAnalyzing ? 'Analizando tabla de frecuencias...' : `Análisis de Frecuencia: ${selectedVars.join(', ')}`}
-                    </h3>
+
+                    {/* Contenido */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                            {isAnalyzing ? 'Analizando distribución...' : 'Insights Estadísticos'}
+                            {!isAnalyzing && <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider border border-indigo-100">AI Analysis</span>}
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {isAnalyzing ? 'Procesando frecuencias y patrones...' : `Análisis generado para: ${selectedVars.join(', ')}`}
+                          </p>
+                        </div>
+                        {!isAnalyzing && (
+                          <button
+                            onClick={() => setAnalysisResult(null)}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+                            title="Cerrar análisis"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="text-slate-600 text-sm leading-relaxed bg-slate-50/50 rounded-lg p-4 border border-slate-100">
+                        {isAnalyzing ? (
+                          <div className="space-y-3 py-2">
+                            <div className="h-2 bg-indigo-100 rounded w-3/4 animate-pulse"></div>
+                            <div className="h-2 bg-indigo-100 rounded w-full animate-pulse"></div>
+                            <div className="h-2 bg-indigo-100 rounded w-5/6 animate-pulse"></div>
+                          </div>
+                        ) : (
+                          <div className="prose prose-sm prose-indigo max-w-none">
+                            {analysisResult!.split('\n').map((line, i) => (
+                              <p key={i} className={`min-h-[1em] ${line.trim() === '' ? 'h-2' : 'mb-2 last:mb-0'}`}>
+                                {line.split('**').map((part, index) =>
+                                  index % 2 === 1 ? <strong key={index} className="text-indigo-900 font-semibold">{part}</strong> : part
+                                )}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {!isAnalyzing && (
-                    <button
-                      onClick={() => setAnalysisResult(null)}
-                      className="p-1 hover:bg-black/5 rounded-full transition-colors text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 border border-indigo-100 min-h-[100px]">
-                  {isAnalyzing ? (
-                    <div className="space-y-3 animate-pulse">
-                      <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
-                      <div className="h-4 bg-indigo-100 rounded w-1/2"></div>
-                      <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
-                    </div>
-                  ) : (
-                    <div className="prose prose-sm prose-indigo max-w-none text-slate-700">
-                      {analysisResult!.split('\n').map((line, i) => (
-                        <p key={i} className="mb-2 last:mb-0">{line}</p>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
