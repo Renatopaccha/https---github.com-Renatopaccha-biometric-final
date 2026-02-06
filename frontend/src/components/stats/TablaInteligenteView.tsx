@@ -11,6 +11,11 @@ import {
 } from '../ui/tooltip';
 import type { SmartTableColumnStats, SmartTableResponse, FilterRule } from '../../types/stats';
 
+// Export libraries (dynamic imports for better bundle splitting)
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 // =============================================================================
 // FILTER OPERATORS - Human Readable Labels
 // =============================================================================
@@ -228,12 +233,8 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   const varsRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
 
-  // Auto-select ALL variables on mount (default behavior: show everything)
-  useEffect(() => {
-    if (availableVars.length > 0 && selectedVars.length === 0) {
-      setSelectedVars([...availableVars]);
-    }
-  }, [availableVars]);
+  // NOTE: No auto-selection - let user choose which variables to analyze
+  // (Previously auto-selected all variables on mount)
 
   // Helper functions for Select All / Deselect All
   const selectAllVariables = () => setSelectedVars([...availableVars]);
@@ -342,6 +343,252 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
   const segments = data?.segments || ['General'];
   const hasSegmentation = segmentBy && segments.length > 1;
 
+  // =====================================================
+  // EXPORT FUNCTIONS
+  // =====================================================
+
+  /**
+   * Export table data to Excel (.xlsx)
+   */
+  const handleExportExcel = useCallback(() => {
+    if (!data || selectedVars.length === 0) {
+      console.warn('Export Excel: No data or no selected variables');
+      return;
+    }
+
+    try {
+      // Compute targetSegment the same way as getStats
+      const targetSegment = hasSegmentation ? activeSegment : 'General';
+
+      // Debug logging
+      console.log('Excel Export Debug:', {
+        selectedVars,
+        targetSegment,
+        hasSegmentation,
+        segments: data.segments,
+        statisticsKeys: Object.keys(data.statistics),
+        firstVarSegments: data.statistics[selectedVars[0]] ? Object.keys(data.statistics[selectedVars[0]]) : 'N/A'
+      });
+
+      // Build data rows - each row is a statistic, columns are variables
+      const statsRows: Record<string, string | number>[] = [];
+
+      // Define all possible statistics with their labels
+      const allStats = [
+        // Central Tendency
+        { key: 'n', label: 'N (Conteo)', getter: (s: SmartTableColumnStats) => s.n },
+        { key: 'mean', label: 'Media', getter: (s: SmartTableColumnStats) => s.central_tendency?.mean },
+        { key: 'median', label: 'Mediana', getter: (s: SmartTableColumnStats) => s.central_tendency?.median },
+        {
+          key: 'mode', label: 'Moda', getter: (s: SmartTableColumnStats) => {
+            const m = s.central_tendency?.mode;
+            return Array.isArray(m) ? m.join(', ') : m;
+          }
+        },
+        { key: 'trimmed_mean_5', label: 'Media Recortada 5%', getter: (s: SmartTableColumnStats) => s.central_tendency?.trimmed_mean_5 },
+        { key: 'sum', label: 'Suma', getter: (s: SmartTableColumnStats) => s.central_tendency?.sum },
+        { key: 'geometric_mean', label: 'Media Geométrica', getter: (s: SmartTableColumnStats) => s.central_tendency?.geometric_mean },
+        // Dispersion
+        { key: 'std_dev', label: 'Desviación Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.std_dev },
+        { key: 'variance', label: 'Varianza', getter: (s: SmartTableColumnStats) => s.dispersion?.variance },
+        { key: 'min', label: 'Mínimo', getter: (s: SmartTableColumnStats) => s.dispersion?.min },
+        { key: 'max', label: 'Máximo', getter: (s: SmartTableColumnStats) => s.dispersion?.max },
+        { key: 'range', label: 'Recorrido (Rango)', getter: (s: SmartTableColumnStats) => s.dispersion?.range },
+        { key: 'iqr', label: 'Rango Intercuartil', getter: (s: SmartTableColumnStats) => s.dispersion?.iqr },
+        { key: 'cv', label: 'Coef. de Variación (%)', getter: (s: SmartTableColumnStats) => s.dispersion?.cv },
+        { key: 'sem', label: 'Error Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.sem },
+        // Percentiles
+        { key: 'q1', label: 'Q1 (25%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q1 },
+        { key: 'q3', label: 'Q3 (75%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q3 },
+        { key: 'p5', label: 'P5 (5%)', getter: (s: SmartTableColumnStats) => s.percentiles?.p5 },
+        { key: 'p95', label: 'P95 (95%)', getter: (s: SmartTableColumnStats) => s.percentiles?.p95 },
+        // Shape
+        { key: 'skewness', label: 'Asimetría', getter: (s: SmartTableColumnStats) => s.shape?.skewness },
+        { key: 'kurtosis', label: 'Curtosis', getter: (s: SmartTableColumnStats) => s.shape?.kurtosis },
+        { key: 'normality_test', label: 'Test de Normalidad', getter: (s: SmartTableColumnStats) => s.shape?.normality_test },
+      ];
+
+      // Build rows
+      allStats.forEach(stat => {
+        const row: Record<string, string | number> = { 'Estadístico': stat.label };
+        selectedVars.forEach(variable => {
+          const varStats = data.statistics[variable]?.[targetSegment];
+          if (varStats) {
+            const value = stat.getter(varStats);
+            row[variable] = value !== null && value !== undefined
+              ? (typeof value === 'number' ? Number(value.toFixed(4)) : value)
+              : '-';
+          } else {
+            row[variable] = '-';
+          }
+        });
+        statsRows.push(row);
+      });
+
+      console.log('Excel Export: Built rows', statsRows.length, 'Sample:', statsRows[0]);
+
+      // Create worksheet
+      const worksheet = XLSX.utils.json_to_sheet(statsRows);
+
+      // Set column widths
+      const colWidths = [{ wch: 25 }, ...selectedVars.map(() => ({ wch: 15 }))];
+      worksheet['!cols'] = colWidths;
+
+      // Create workbook
+      const workbook = XLSX.utils.book_new();
+      const sheetName = hasSegmentation ? `Estadisticas_${targetSegment}` : 'Estadisticas';
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31)); // Max 31 chars
+
+      // Generate filename with date
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+      const filename = `Biometric_Analisis_${dateStr}.xlsx`;
+
+      // Download
+      XLSX.writeFile(workbook, filename);
+      console.log('Excel Export: File saved as', filename);
+
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('Error al exportar a Excel. Inténtelo de nuevo.');
+    }
+  }, [data, selectedVars, activeSegment, hasSegmentation]);
+
+  /**
+   * Export table data to PDF report
+   */
+  const handleExportPDF = useCallback(() => {
+    if (!data || selectedVars.length === 0) {
+      console.warn('Export PDF: No data or no selected variables');
+      return;
+    }
+
+    try {
+      // Compute targetSegment the same way as getStats
+      const targetSegment = hasSegmentation ? activeSegment : 'General';
+
+      console.log('PDF Export Debug:', {
+        selectedVars: selectedVars.length,
+        targetSegment,
+        hasSegmentation
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc = new jsPDF('landscape', 'mm', 'a4') as any;
+
+      // Colors matching the app theme
+      const tealColor: [number, number, number] = [13, 148, 136]; // teal-600
+      const darkTeal: [number, number, number] = [15, 118, 110]; // teal-700
+
+      // Add title
+      const segmentLabel = hasSegmentation ? ` - ${targetSegment}` : '';
+      doc.setFontSize(18);
+      doc.setTextColor(...darkTeal);
+      doc.text(`Reporte de Análisis Bioestadístico${segmentLabel}`, 14, 20);
+
+      // Add date
+      const now = new Date();
+      const dateFormatted = now.toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Generado: ${dateFormatted}`, 14, 28);
+      doc.text(`Variables analizadas: ${selectedVars.length}`, 14, 34);
+
+      // Define columns
+      const columns = ['Estadístico', ...selectedVars];
+
+      // Define all statistics
+      const allStats = [
+        { label: 'N (Conteo)', getter: (s: SmartTableColumnStats) => s.n },
+        { label: 'Media', getter: (s: SmartTableColumnStats) => s.central_tendency?.mean },
+        { label: 'Mediana', getter: (s: SmartTableColumnStats) => s.central_tendency?.median },
+        { label: 'Desv. Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.std_dev },
+        { label: 'Varianza', getter: (s: SmartTableColumnStats) => s.dispersion?.variance },
+        { label: 'Mínimo', getter: (s: SmartTableColumnStats) => s.dispersion?.min },
+        { label: 'Máximo', getter: (s: SmartTableColumnStats) => s.dispersion?.max },
+        { label: 'Rango', getter: (s: SmartTableColumnStats) => s.dispersion?.range },
+        { label: 'Q1 (25%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q1 },
+        { label: 'Q3 (75%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q3 },
+        { label: 'Asimetría', getter: (s: SmartTableColumnStats) => s.shape?.skewness },
+        { label: 'Curtosis', getter: (s: SmartTableColumnStats) => s.shape?.kurtosis },
+        { label: 'Normalidad', getter: (s: SmartTableColumnStats) => s.shape?.normality_test },
+      ];
+
+      // Build table data
+      const tableData = allStats.map(stat => {
+        const row = [stat.label];
+        selectedVars.forEach(variable => {
+          const varStats = data.statistics[variable]?.[targetSegment];
+          if (varStats) {
+            const value = stat.getter(varStats);
+            row.push(value !== null && value !== undefined
+              ? (typeof value === 'number' ? value.toFixed(3) : String(value))
+              : '-');
+          } else {
+            row.push('-');
+          }
+        });
+        return row;
+      });
+
+      // Generate table using autoTable
+      autoTable(doc, {
+        head: [columns],
+        body: tableData,
+        startY: 42,
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+          overflow: 'linebreak',
+        },
+        headStyles: {
+          fillColor: tealColor,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          0: { fontStyle: 'bold', halign: 'left', cellWidth: 35 },
+        },
+        alternateRowStyles: {
+          fillColor: [240, 253, 250], // teal-50
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      // Add footer
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(
+          `Biometric App - Análisis Estadístico | Página ${i} de ${pageCount}`,
+          doc.internal.pageSize.width / 2,
+          doc.internal.pageSize.height - 10,
+          { align: 'center' }
+        );
+      }
+
+      // Generate filename with date
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+      const filename = `Biometric_Report_${dateStr}.pdf`;
+
+      // Download
+      doc.save(filename);
+
+    } catch (error) {
+      console.error('Error exporting to PDF:', error);
+      alert('Error al exportar a PDF. Inténtelo de nuevo.');
+    }
+  }, [data, selectedVars, activeSegment, hasSegmentation]);
+
   // Render tooltip wrapper
   const withTooltip = (label: string, tooltipKey: string, children: React.ReactNode) => (
     <TooltipProvider delayDuration={200}>
@@ -386,281 +633,263 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
           </div>
         </div>
 
-        {/* Variable Selector */}
-        <div className="ml-4">
-          <div className="relative max-w-md" ref={varsRef}>
-            <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-              Variables Numéricas a Analizar
-            </label>
-            <button
-              onClick={() => setShowVarsDropdown(!showVarsDropdown)}
-              className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm"
-              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-            >
-              <span className="text-slate-700 flex-1 text-left">
-                {selectedVars.length === 0
-                  ? 'Seleccionar variables (Mín. 1)'
-                  : `${selectedVars.length} variable(s) seleccionada(s)`}
-              </span>
-              <ChevronDown className="w-4 h-4 text-slate-500" />
-            </button>
+        {/* ================================================================
+            CONTROLS CONTAINER - Organized Layout
+            ================================================================ */}
+        <div className="space-y-4 mb-6">
 
-            {showVarsDropdown && (
-              <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-80 overflow-auto">
-                {/* Select All / Deselect All Buttons */}
-                <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-2 flex gap-2 z-10">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      selectAllVariables();
-                    }}
-                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-teal-50 text-teal-700 rounded hover:bg-teal-100 transition-colors"
-                  >
-                    Seleccionar todo
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deselectAllVariables();
-                    }}
-                    className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
-                  >
-                    Deseleccionar todo
-                  </button>
-                </div>
+          {/* ROW 1: Variables + Segmentation (Side by Side) */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 
-                {availableVars.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-slate-500">
-                    No hay variables numéricas disponibles
-                  </div>
-                ) : (
-                  availableVars.map((variable) => (
-                    <label
-                      key={variable}
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedVars.includes(variable)}
-                        onChange={() => toggleVariable(variable)}
-                        className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                      />
-                      <span className="text-sm text-slate-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{variable}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Segmentation Dropdown */}
-          <div className="relative max-w-xs ml-4" ref={segmentRef}>
-            <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-              <Users className="w-3.5 h-3.5 inline mr-1" />
-              Segmentar por...
-            </label>
-            <button
-              onClick={() => setShowSegmentDropdown(!showSegmentDropdown)}
-              className={`w-full px-4 py-3 bg-white border rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm ${segmentBy ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-300'
-                }`}
-              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-            >
-              <span className={`flex-1 text-left ${segmentBy ? 'text-indigo-700 font-medium' : 'text-slate-500'}`}>
-                {segmentBy || 'Sin segmentación'}
-              </span>
-              <ChevronDown className="w-4 h-4 text-slate-500" />
-            </button>
-
-            {showSegmentDropdown && (
-              <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
-                {/* Option to clear segmentation */}
-                <button
-                  onClick={() => {
-                    setSegmentBy('');
-                    setShowSegmentDropdown(false);
-                  }}
-                  className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm ${!segmentBy ? 'bg-slate-100 font-medium' : ''
-                    }`}
-                >
-                  <span className="text-slate-500 italic">Sin segmentación</span>
-                </button>
-
-                {categoricalVars.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-slate-500">
-                    No hay variables categóricas disponibles
-                  </div>
-                ) : (
-                  categoricalVars.map((variable) => (
-                    <button
-                      key={variable}
-                      onClick={() => {
-                        setSegmentBy(variable);
-                        setShowSegmentDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm ${segmentBy === variable ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-900'
-                        }`}
-                    >
-                      {variable}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Active segmentation indicator */}
-        {hasSegmentation && (
-          <div className="ml-4 mt-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
-              <Users className="w-3 h-3" />
-              Segmentado por: {segmentBy} ({segments.length} grupos)
-            </span>
-          </div>
-        )}
-
-        {/* Advanced Filters Panel */}
-        <div className="ml-4 mt-3">
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm max-w-3xl">
-            {/* Filter Header - Collapsible */}
-            <button
-              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors rounded-lg"
-            >
-              <Filter className="w-4 h-4 text-teal-600" />
-              <h3 className="text-sm font-bold text-slate-900 flex-1 text-left" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                Filtros Avanzados
-              </h3>
-              {filterActive && filterRules.length > 0 && (
-                <span className="text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-medium">
-                  {filterRules.length} regla{filterRules.length !== 1 ? 's' : ''}
+            {/* LEFT: Variable Selector */}
+            <div className="relative w-full sm:w-80" ref={varsRef}>
+              <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                Variables Numéricas a Analizar
+              </label>
+              <button
+                onClick={() => setShowVarsDropdown(!showVarsDropdown)}
+                className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm"
+                style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+              >
+                <span className="text-slate-700 flex-1 text-left">
+                  {selectedVars.length === 0
+                    ? 'Seleccionar variables (Mín. 1)'
+                    : `${selectedVars.length} variable(s) seleccionada(s)`}
                 </span>
-              )}
-              <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform ${isFilterExpanded ? 'rotate-90' : ''}`} />
-            </button>
+                <ChevronDown className="w-4 h-4 text-slate-500" />
+              </button>
 
-            {/* Filter Content - Expandable */}
-            {isFilterExpanded && (
-              <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-lg">
-                {/* Activate Filter Toggle */}
-                <div className="flex items-center gap-4 mb-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={filterActive}
-                      onChange={(e) => setFilterActive(e.target.checked)}
-                      className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                    />
-                    <span className="text-xs font-medium text-slate-700" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Activar Filtro</span>
-                  </label>
-                </div>
+              {showVarsDropdown && (
+                <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-20 max-h-80 overflow-auto">
+                  {/* Select All / Deselect All Buttons */}
+                  <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-2 flex gap-2 z-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectAllVariables();
+                      }}
+                      className="flex-1 px-3 py-1.5 text-xs font-medium bg-teal-50 text-teal-700 rounded hover:bg-teal-100 transition-colors"
+                    >
+                      Seleccionar todo
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deselectAllVariables();
+                      }}
+                      className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
+                    >
+                      Deseleccionar todo
+                    </button>
+                  </div>
 
-                {/* Filter Logic (AND/OR) */}
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-xs text-slate-600" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>Combinar reglas con:</span>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={filterLogic === 'AND'}
-                      onChange={() => setFilterLogic('AND')}
-                      className="text-teal-600 focus:ring-teal-500"
-                    />
-                    <span className="text-xs font-medium text-slate-900">Y (AND)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={filterLogic === 'OR'}
-                      onChange={() => setFilterLogic('OR')}
-                      className="text-teal-600 focus:ring-teal-500"
-                    />
-                    <span className="text-xs font-medium text-slate-900">O (OR)</span>
-                  </label>
-                </div>
-
-                {/* Filter Rules List */}
-                <div className="space-y-2 mb-3">
-                  {filterRules.map((rule) => (
-                    <div key={rule.id} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200">
-                      {/* Column Selector */}
-                      <select
-                        value={rule.column}
-                        onChange={(e) => updateRule(rule.id, 'column', e.target.value)}
-                        className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                      >
-                        {availableVars.map((variable) => (
-                          <option key={variable} value={variable}>{variable}</option>
-                        ))}
-                      </select>
-
-                      {/* Operator Selector - Human Readable */}
-                      <select
-                        value={rule.operator}
-                        onChange={(e) => updateRule(rule.id, 'operator', e.target.value)}
-                        className="w-36 px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                      >
-                        {filterOperators.map((op) => (
-                          <option key={op.value} value={op.value}>{op.label}</option>
-                        ))}
-                      </select>
-
-                      {/* Value Input with +/- Buttons */}
-                      <div className="flex items-center">
-                        <input
-                          type="number"
-                          value={rule.value}
-                          onChange={(e) => updateRule(rule.id, 'value', parseFloat(e.target.value) || 0)}
-                          className="w-24 px-2 py-1.5 bg-white border border-slate-300 rounded-l text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          style={{ fontFamily: 'JetBrains Mono, Roboto Mono, monospace' }}
-                          step="0.01"
-                        />
-                        <div className="flex flex-col border border-l-0 border-slate-300 rounded-r overflow-hidden">
-                          <button
-                            onClick={() => updateRule(rule.id, 'value', rule.value + 1)}
-                            className="px-1 py-0 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs leading-none"
-                          >
-                            +
-                          </button>
-                          <button
-                            onClick={() => updateRule(rule.id, 'value', rule.value - 1)}
-                            className="px-1 py-0 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs leading-none border-t border-slate-300"
-                          >
-                            −
-                          </button>
-                        </div>
-                      </div>
+                  {availableVars.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-slate-500">
+                      No hay variables numéricas disponibles
                     </div>
-                  ))}
+                  ) : (
+                    availableVars.map((variable) => (
+                      <label
+                        key={variable}
+                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedVars.includes(variable)}
+                          onChange={() => toggleVariable(variable)}
+                          className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                        />
+                        <span className="text-sm text-slate-900" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{variable}</span>
+                      </label>
+                    ))
+                  )}
                 </div>
+              )}
+            </div>
 
-                {/* Filter Actions */}
-                <div className="flex items-center gap-2">
+            {/* RIGHT: Segmentation Dropdown */}
+            <div className="relative w-full sm:w-64" ref={segmentRef}>
+              <label className="text-xs font-medium text-slate-700 mb-1.5 block" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                <Users className="w-3.5 h-3.5 inline mr-1" />
+                Segmentar por...
+              </label>
+              <button
+                onClick={() => setShowSegmentDropdown(!showSegmentDropdown)}
+                className={`w-full px-4 py-2.5 bg-white border rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm shadow-sm ${segmentBy ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-300'}`}
+                style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+              >
+                <span className={`flex-1 text-left ${segmentBy ? 'text-indigo-700 font-medium' : 'text-slate-500'}`}>
+                  {segmentBy || 'Sin segmentación'}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-500" />
+              </button>
+
+              {showSegmentDropdown && (
+                <div className="absolute top-full mt-1 w-full bg-white border border-slate-300 rounded-lg shadow-lg z-20 max-h-64 overflow-auto">
+                  {/* Option to clear segmentation */}
                   <button
-                    onClick={addFilterRule}
-                    className="px-3 py-1.5 bg-teal-600 text-white rounded text-xs hover:bg-teal-700 transition-colors flex items-center gap-1.5 shadow-sm"
-                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                    onClick={() => {
+                      setSegmentBy('');
+                      setShowSegmentDropdown(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm ${!segmentBy ? 'bg-slate-100 font-medium' : ''}`}
                   >
-                    <Plus className="w-3 h-3" />
-                    Agregar Regla
+                    <span className="text-slate-500 italic">Sin segmentación</span>
+                  </button>
+
+                  {categoricalVars.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-slate-500">
+                      No hay variables categóricas disponibles
+                    </div>
+                  ) : (
+                    categoricalVars.map((variable) => (
+                      <button
+                        key={variable}
+                        onClick={() => {
+                          setSegmentBy(variable);
+                          setShowSegmentDropdown(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm ${segmentBy === variable ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-900'}`}
+                      >
+                        {variable}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Segmentation Indicator */}
+          {hasSegmentation && (
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                <Users className="w-3 h-3" />
+                Segmentado por: {segmentBy} ({segments.length} grupos)
+              </span>
+            </div>
+          )}
+
+          {/* ROW 2: Advanced Filters Toolbar */}
+          <div className="bg-slate-50/80 rounded-lg border border-slate-200 p-3">
+            {/* Filter Header - Always Visible */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Filter Toggle & Label */}
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-teal-600" />
+                <span className="text-sm font-semibold text-slate-800" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  Filtros
+                </span>
+                <label className="flex items-center gap-1.5 cursor-pointer ml-2">
+                  <input
+                    type="checkbox"
+                    checked={filterActive}
+                    onChange={(e) => setFilterActive(e.target.checked)}
+                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
+                  />
+                  <span className="text-xs text-slate-600">Activar</span>
+                </label>
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-slate-300 hidden sm:block"></div>
+
+              {/* Filter Logic Toggle */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Lógica:</span>
+                <div className="flex items-center gap-1 bg-white rounded-md border border-slate-200 p-0.5">
+                  <button
+                    onClick={() => setFilterLogic('AND')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${filterLogic === 'AND' ? 'bg-teal-100 text-teal-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    Y
                   </button>
                   <button
-                    onClick={removeLastRule}
-                    className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-xs hover:bg-slate-300 transition-colors flex items-center gap-1.5"
-                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                    onClick={() => setFilterLogic('OR')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${filterLogic === 'OR' ? 'bg-teal-100 text-teal-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
                   >
-                    <Trash2 className="w-3 h-3" />
-                    Eliminar Última
-                  </button>
-                  <button
-                    onClick={clearAllRules}
-                    className="px-3 py-1.5 text-red-600 rounded text-xs hover:bg-red-50 transition-colors"
-                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-                  >
-                    Limpiar Reglas
+                    O
                   </button>
                 </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-slate-300 hidden sm:block"></div>
+
+              {/* Add Rule Button */}
+              <button
+                onClick={addFilterRule}
+                className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs hover:bg-teal-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Agregar Regla
+              </button>
+
+              {/* Clear Button (only if rules exist) */}
+              {filterRules.length > 0 && (
+                <button
+                  onClick={clearAllRules}
+                  className="px-3 py-1.5 text-red-600 text-xs hover:bg-red-50 rounded-md transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Limpiar ({filterRules.length})
+                </button>
+              )}
+            </div>
+
+            {/* Filter Rules - Horizontal Cards */}
+            {filterRules.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-200">
+                {filterRules.map((rule, index) => (
+                  <div key={rule.id} className="flex items-center gap-1.5 px-2 py-1.5 bg-white rounded-md border border-slate-200 shadow-sm">
+                    {/* Rule Number */}
+                    <span className="text-xs text-slate-400 font-medium w-4 text-center">{index + 1}.</span>
+
+                    {/* Column Selector */}
+                    <select
+                      value={rule.column}
+                      onChange={(e) => updateRule(rule.id, 'column', e.target.value)}
+                      className="w-[130px] px-2 py-1 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                    >
+                      {availableVars.map((variable) => (
+                        <option key={variable} value={variable}>{variable}</option>
+                      ))}
+                    </select>
+
+                    {/* Operator Selector */}
+                    <select
+                      value={rule.operator}
+                      onChange={(e) => updateRule(rule.id, 'operator', e.target.value)}
+                      className="w-[120px] px-2 py-1 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                    >
+                      {filterOperators.map((op) => (
+                        <option key={op.value} value={op.value}>{op.label}</option>
+                      ))}
+                    </select>
+
+                    {/* Value Input */}
+                    <input
+                      type="number"
+                      value={rule.value}
+                      onChange={(e) => updateRule(rule.id, 'value', parseFloat(e.target.value) || 0)}
+                      className="w-[70px] px-2 py-1 bg-white border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      style={{ fontFamily: 'JetBrains Mono, Roboto Mono, monospace' }}
+                      step="0.01"
+                    />
+
+                    {/* Remove Individual Rule */}
+                    <button
+                      onClick={() => setFilterRules(filterRules.filter(r => r.id !== rule.id))}
+                      className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                      title="Eliminar regla"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -864,10 +1093,20 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
           {isLoading ? (
             <TableSkeleton rows={6} cols={selectedVars.length + 1} />
           ) : selectedVars.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-12 text-center">
-              <p className="text-slate-500" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-                Selecciona al menos una variable para ver los estadísticos
-              </p>
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-16 text-center">
+              <div className="max-w-md mx-auto">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-teal-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  Selecciona variables para comenzar
+                </h3>
+                <p className="text-slate-500 text-sm" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  Elige una o más variables numéricas del selector superior para visualizar la tabla inteligente con sus estadísticos descriptivos.
+                </p>
+              </div>
             </div>
           ) : data && (
             /* ============================================= */
@@ -1408,8 +1647,8 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
           {/* Action Toolbar */}
           {data && selectedVars.length > 0 && (
             <ActionToolbar
-              onExportExcel={() => console.log('Export Excel')}
-              onExportPDF={() => console.log('Export PDF')}
+              onExportExcel={handleExportExcel}
+              onExportPDF={handleExportPDF}
               onAIInterpretation={() => console.log('AI Interpretation')}
               onContinueToChat={() => console.log('Continue to Chat')}
             />
