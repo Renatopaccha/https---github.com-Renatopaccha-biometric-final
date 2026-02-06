@@ -251,6 +251,42 @@ async def update_chat_title(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/interpret-table")
+async def interpret_smart_table(
+    payload: dict
+):
+    """
+    Recibe el objeto de estadísticas (JSON) y devuelve la interpretación IA.
+    
+    Payload esperado: { "stats": {...}, "segment": "General" }
+    
+    Returns:
+        Interpretación narrativa en formato Markdown
+    """
+    try:
+        # Check if AI service is available
+        if ai_service is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI Assistant not configured. Please set GEMINI_API_KEY."
+            )
+        
+        stats = payload.get("stats")
+        segment = payload.get("segment", "General")
+        
+        if not stats:
+            raise HTTPException(status_code=400, detail="No se enviaron estadísticas")
+
+        # Llamamos al método que interpreta las estadísticas
+        interpretation = await ai_service.interpret_statistics(stats, segment)
+        
+        return {"interpretation": interpretation}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health", tags=["Health"])
 async def ai_health_check():
     """

@@ -344,105 +344,105 @@ export function TablasFrecuenciaView({ onBack, onNavigateToChat }: TablasFrecuen
       const autoTable = autoTableModule.default;
 
       const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let yPos = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let yPos = 20;
 
-    // Título
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Tablas de Frecuencia', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
-
-    // Fecha
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 5;
-
-    if (segmentBy) {
-      doc.text(`Segmentado por: ${segmentBy}`, pageWidth / 2, yPos, { align: 'center' });
-      yPos += 5;
-    }
-    yPos += 10;
-
-    // Para cada variable
-    for (const variable of selectedVars) {
-      // Título de variable
-      doc.setFontSize(12);
+      // Título
+      doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Variable: ${variable}`, 14, yPos);
+      doc.text('Tablas de Frecuencia', pageWidth / 2, yPos, { align: 'center' });
       yPos += 8;
 
-      // Para cada segmento
-      const dataSource = isEditing ? editedData : tablesData;
-      for (const segment of segments) {
-        const tables = dataSource[segment] || [];
-        const table = tables.find(t => t.variable === variable);
-
-        if (!table) continue;
-
-        if (segmentBy && segments.length > 1) {
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'italic');
-          doc.text(`Segmento: ${segment}`, 14, yPos);
-          yPos += 6;
-        }
-
-        const tableData = table.rows.map(row => [
-          row.categoria,
-          row.frecuencia.toString(),
-          `${row.porcentaje.toFixed(1)}`,
-          `${row.porcentaje_acumulado.toFixed(1)}`
-        ]);
-
-        // Agregar fila de total
-        tableData.push(['Total', table.total.toString(), '100.0', '100.0']);
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Categoría', 'N', '%', '% Acum.']],
-          body: tableData,
-          theme: 'grid',
-          headStyles: {
-            fillColor: [243, 244, 246],
-            textColor: [31, 41, 55],
-            lineColor: [209, 213, 219],
-            lineWidth: 0.1,
-            fontStyle: 'bold'
-          },
-          bodyStyles: {
-            lineColor: [209, 213, 219],
-            lineWidth: 0.1,
-            textColor: [55, 65, 81]
-          },
-          footStyles: {
-            fillColor: [229, 231, 235],
-            textColor: [0, 0, 0],
-            fontStyle: 'bold'
-          },
-          alternateRowStyles: { fillColor: [255, 255, 255] },
-          margin: { left: 14, right: 14 },
-          styles: { fontSize: 9, cellPadding: 3 },
-          didParseCell: (data) => {
-            // Estilo especial para fila Total
-            if (data.row.index === tableData.length - 1) {
-              data.cell.styles.fillColor = [229, 231, 235];
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        });
-
-        yPos = (doc as any).lastAutoTable.finalY + 10;
-
-        // Nueva página si es necesario
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-      }
-
+      // Fecha
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
       yPos += 5;
-    }
+
+      if (segmentBy) {
+        doc.text(`Segmentado por: ${segmentBy}`, pageWidth / 2, yPos, { align: 'center' });
+        yPos += 5;
+      }
+      yPos += 10;
+
+      // Para cada variable
+      for (const variable of selectedVars) {
+        // Título de variable
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Variable: ${variable}`, 14, yPos);
+        yPos += 8;
+
+        // Para cada segmento
+        const dataSource = isEditing ? editedData : tablesData;
+        for (const segment of segments) {
+          const tables = dataSource[segment] || [];
+          const table = tables.find(t => t.variable === variable);
+
+          if (!table) continue;
+
+          if (segmentBy && segments.length > 1) {
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'italic');
+            doc.text(`Segmento: ${segment}`, 14, yPos);
+            yPos += 6;
+          }
+
+          const tableData = table.rows.map(row => [
+            row.categoria,
+            row.frecuencia.toString(),
+            `${row.porcentaje.toFixed(1)}`,
+            `${row.porcentaje_acumulado.toFixed(1)}`
+          ]);
+
+          // Agregar fila de total
+          tableData.push(['Total', table.total.toString(), '100.0', '100.0']);
+
+          autoTable(doc, {
+            startY: yPos,
+            head: [['Categoría', 'N', '%', '% Acum.']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: {
+              fillColor: [243, 244, 246],
+              textColor: [31, 41, 55],
+              lineColor: [209, 213, 219],
+              lineWidth: 0.1,
+              fontStyle: 'bold'
+            },
+            bodyStyles: {
+              lineColor: [209, 213, 219],
+              lineWidth: 0.1,
+              textColor: [55, 65, 81]
+            },
+            footStyles: {
+              fillColor: [229, 231, 235],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold'
+            },
+            alternateRowStyles: { fillColor: [255, 255, 255] },
+            margin: { left: 14, right: 14 },
+            styles: { fontSize: 9, cellPadding: 3 },
+            didParseCell: (data) => {
+              // Estilo especial para fila Total
+              if (data.row.index === tableData.length - 1) {
+                data.cell.styles.fillColor = [229, 231, 235];
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+          });
+
+          yPos = (doc as any).lastAutoTable.finalY + 10;
+
+          // Nueva página si es necesario
+          if (yPos > 250) {
+            doc.addPage();
+            yPos = 20;
+          }
+        }
+
+        yPos += 5;
+      }
 
       doc.save(`Tablas_Frecuencia${segmentBy ? `_por_${segmentBy}` : ''}.pdf`);
     } catch (error) {

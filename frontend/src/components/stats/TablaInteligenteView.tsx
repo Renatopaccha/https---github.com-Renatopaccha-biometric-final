@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, ChevronRight, Filter, Info, Loader2, Plus, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Filter, Info, Loader2, Plus, Sparkles, Trash2, Users } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ActionToolbar } from './ActionToolbar';
 import { getSmartTableStats } from '../../api/stats';
@@ -11,10 +11,19 @@ import {
 } from '../ui/tooltip';
 import type { SmartTableColumnStats, SmartTableResponse, FilterRule } from '../../types/stats';
 
+
 // Export libraries (xlsx-js-style for styled exports)
-import * as XLSX from 'xlsx-js-style';
+import XLSX from 'xlsx-js-style';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ReactMarkdown from 'react-markdown';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 
 // =============================================================================
 // FILTER OPERATORS - Human Readable Labels
@@ -230,6 +239,11 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
     pruebaNormalidad: true,
   });
 
+  // AI Interpretation State
+  const [interpreting, setInterpreting] = useState(false);
+  const [aiInterpretation, setAiInterpretation] = useState<string | null>(null);
+  const [showInterpretationModal, setShowInterpretationModal] = useState(false);
+
   const varsRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
 
@@ -349,15 +363,20 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
 
   /**
    * Export table data to Excel (.xlsx) with professional corporate styling
+   * Uses xlsx-js-style for cell styling support
    */
   const handleExportExcel = useCallback(() => {
+    // Early validation
     if (!data || selectedVars.length === 0) {
       console.warn('Export Excel: No data or no selected variables');
+      alert('No hay datos para exportar. Seleccione al menos una variable.');
       return;
     }
 
     try {
-      // Compute targetSegment the same way as getStats
+      console.log('Excel Export: Starting export...');
+
+      // Compute targetSegment
       const targetSegment = hasSegmentation ? activeSegment : 'General';
 
       // Debug logging
@@ -366,61 +385,14 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
         targetSegment,
         hasSegmentation,
         segments: data.segments,
-        statisticsKeys: Object.keys(data.statistics),
-        firstVarSegments: data.statistics[selectedVars[0]] ? Object.keys(data.statistics[selectedVars[0]]) : 'N/A'
       });
 
       // =====================================================
-      // CORPORATE STYLE DEFINITIONS
+      // 1. BUILD DATA TO EXPORT
       // =====================================================
 
-      // Header style: Teal-700 background, white bold text, centered
-      const headerStyle = {
-        fill: { fgColor: { rgb: '0F766E' } }, // Tailwind teal-700
-        font: { bold: true, color: { rgb: 'FFFFFF' }, name: 'Arial', sz: 11 },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          top: { style: 'thin', color: { rgb: 'B0B0B0' } },
-          bottom: { style: 'thin', color: { rgb: 'B0B0B0' } },
-          left: { style: 'thin', color: { rgb: 'B0B0B0' } },
-          right: { style: 'thin', color: { rgb: 'B0B0B0' } },
-        },
-      };
-
-      // First column style: Bold text, left aligned
-      const firstColumnStyle = {
-        fill: { fgColor: { rgb: 'F0FDFA' } }, // Tailwind teal-50
-        font: { bold: true, color: { rgb: '334155' }, name: 'Arial', sz: 10 }, // Slate-700
-        alignment: { horizontal: 'left', vertical: 'center' },
-        border: {
-          top: { style: 'thin', color: { rgb: 'D1D5DB' } },
-          bottom: { style: 'thin', color: { rgb: 'D1D5DB' } },
-          left: { style: 'thin', color: { rgb: 'D1D5DB' } },
-          right: { style: 'thin', color: { rgb: 'D1D5DB' } },
-        },
-      };
-
-      // Data cell style: Centered, thin borders
-      const dataCellStyle = {
-        font: { color: { rgb: '334155' }, name: 'Arial', sz: 10 }, // Slate-700
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
-          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
-          right: { style: 'thin', color: { rgb: 'E2E8F0' } },
-        },
-      };
-
-      // Alternate row style (even rows) with subtle teal background
-      const alternateRowStyle = {
-        ...dataCellStyle,
-        fill: { fgColor: { rgb: 'F0FDFA' } }, // Tailwind teal-50
-      };
-
-      // Define all possible statistics with their labels
+      // Define statistics to export
       const allStats = [
-        // Central Tendency
         { key: 'n', label: 'N (Conteo)', getter: (s: SmartTableColumnStats) => s.n },
         { key: 'mean', label: 'Media', getter: (s: SmartTableColumnStats) => s.central_tendency?.mean },
         { key: 'median', label: 'Mediana', getter: (s: SmartTableColumnStats) => s.central_tendency?.median },
@@ -430,10 +402,6 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
             return Array.isArray(m) ? m.join(', ') : m;
           }
         },
-        { key: 'trimmed_mean_5', label: 'Media Recortada 5%', getter: (s: SmartTableColumnStats) => s.central_tendency?.trimmed_mean_5 },
-        { key: 'sum', label: 'Suma', getter: (s: SmartTableColumnStats) => s.central_tendency?.sum },
-        { key: 'geometric_mean', label: 'Media Geométrica', getter: (s: SmartTableColumnStats) => s.central_tendency?.geometric_mean },
-        // Dispersion
         { key: 'std_dev', label: 'Desviación Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.std_dev },
         { key: 'variance', label: 'Varianza', getter: (s: SmartTableColumnStats) => s.dispersion?.variance },
         { key: 'min', label: 'Mínimo', getter: (s: SmartTableColumnStats) => s.dispersion?.min },
@@ -442,103 +410,157 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
         { key: 'iqr', label: 'Rango Intercuartil', getter: (s: SmartTableColumnStats) => s.dispersion?.iqr },
         { key: 'cv', label: 'Coef. de Variación (%)', getter: (s: SmartTableColumnStats) => s.dispersion?.cv },
         { key: 'sem', label: 'Error Estándar', getter: (s: SmartTableColumnStats) => s.dispersion?.sem },
-        // Percentiles
         { key: 'q1', label: 'Q1 (25%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q1 },
         { key: 'q3', label: 'Q3 (75%)', getter: (s: SmartTableColumnStats) => s.percentiles?.q3 },
-        { key: 'p5', label: 'P5 (5%)', getter: (s: SmartTableColumnStats) => s.percentiles?.p5 },
-        { key: 'p95', label: 'P95 (95%)', getter: (s: SmartTableColumnStats) => s.percentiles?.p95 },
-        // Shape
         { key: 'skewness', label: 'Asimetría', getter: (s: SmartTableColumnStats) => s.shape?.skewness },
         { key: 'kurtosis', label: 'Curtosis', getter: (s: SmartTableColumnStats) => s.shape?.kurtosis },
         { key: 'normality_test', label: 'Test de Normalidad', getter: (s: SmartTableColumnStats) => s.shape?.normality_test },
       ];
 
-      // Build data rows - each row is a statistic, columns are variables
-      const statsRows: Record<string, string | number>[] = [];
+      // Build data array for export
+      const dataToExport: Record<string, string | number>[] = [];
 
-      // Build rows
-      allStats.forEach(stat => {
+      for (const stat of allStats) {
         const row: Record<string, string | number> = { 'Estadístico': stat.label };
-        selectedVars.forEach(variable => {
+        for (const variable of selectedVars) {
           const varStats = data.statistics[variable]?.[targetSegment];
           if (varStats) {
             const value = stat.getter(varStats);
             row[variable] = value !== null && value !== undefined
-              ? (typeof value === 'number' ? Number(value.toFixed(4)) : value)
+              ? (typeof value === 'number' ? Number(value.toFixed(4)) : String(value))
               : '-';
           } else {
             row[variable] = '-';
           }
-        });
-        statsRows.push(row);
-      });
+        }
+        dataToExport.push(row);
+      }
 
-      console.log('Excel Export: Built rows', statsRows.length, 'Sample:', statsRows[0]);
-
-      // Create worksheet with data
-      const worksheet = XLSX.utils.json_to_sheet(statsRows);
+      console.log('Excel Export: Built', dataToExport.length, 'rows');
 
       // =====================================================
-      // APPLY STYLES TO ALL CELLS
+      // 2. CREATE WORKSHEET
       // =====================================================
 
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-      const numCols = selectedVars.length + 1; // +1 for "Estadístico" column
-      const numRows = allStats.length + 1; // +1 for header row
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
 
-      // Iterate through all cells and apply styles
-      for (let R = range.s.r; R <= range.e.r; R++) {
-        for (let C = range.s.c; C <= range.e.c; C++) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-          const cell = worksheet[cellAddress];
+      // Verify worksheet was created
+      if (!ws || !ws['!ref']) {
+        throw new Error('Failed to create worksheet');
+      }
 
-          if (!cell) continue;
+      console.log('Excel Export: Worksheet created, range:', ws['!ref']);
 
-          // Row 0 = Header row
-          if (R === 0) {
-            cell.s = headerStyle;
-          }
-          // Column A (first column) - Estadístico names
-          else if (C === 0) {
-            cell.s = firstColumnStyle;
-          }
-          // Data cells - alternating row colors
-          else {
-            cell.s = R % 2 === 0 ? alternateRowStyle : dataCellStyle;
+      // =====================================================
+      // 3. APPLY STYLES (with defensive checks)
+      // =====================================================
+
+      try {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+
+        // Style definitions
+        const headerStyle = {
+          fill: { fgColor: { rgb: '0F766E' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: {
+            top: { style: 'thin', color: { rgb: 'B0B0B0' } },
+            bottom: { style: 'thin', color: { rgb: 'B0B0B0' } },
+            left: { style: 'thin', color: { rgb: 'B0B0B0' } },
+            right: { style: 'thin', color: { rgb: 'B0B0B0' } },
+          },
+        };
+
+        const bodyStyle = {
+          font: { color: { rgb: '334155' }, sz: 10 },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: {
+            top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+            bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+            left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+            right: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          },
+        };
+
+        const firstColStyle = {
+          ...bodyStyle,
+          font: { bold: true, color: { rgb: '334155' }, sz: 10 },
+          alignment: { horizontal: 'left', vertical: 'center' },
+          fill: { fgColor: { rgb: 'F0FDFA' } },
+        };
+
+        // Iterate through cells safely
+        for (let R = range.s.r; R <= range.e.r; R++) {
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+
+            // IMPORTANT: Skip if cell doesn't exist
+            if (!ws[cellRef]) continue;
+
+            // Apply appropriate style
+            if (R === 0) {
+              // Header row
+              ws[cellRef].s = headerStyle;
+            } else if (C === 0) {
+              // First column (statistic names)
+              ws[cellRef].s = firstColStyle;
+            } else {
+              // Data cells
+              ws[cellRef].s = bodyStyle;
+            }
           }
         }
+
+        console.log('Excel Export: Styles applied successfully');
+      } catch (styleError) {
+        console.warn('Excel Export: Style application failed, continuing without styles:', styleError);
+        // Continue without styles - data will still export
       }
 
       // =====================================================
-      // SET COLUMN WIDTHS AND ROW HEIGHTS
+      // 4. SET COLUMN WIDTHS
       // =====================================================
 
-      // Column A wider for statistic names, data columns uniform
-      worksheet['!cols'] = [
-        { wch: 30 }, // Estadístico column (wider)
-        ...selectedVars.map(() => ({ wch: 15 })), // Data columns
+      ws['!cols'] = [
+        { wch: 25 }, // First column (Estadístico)
+        ...selectedVars.map(() => ({ wch: 18 })),
       ];
 
-      // Set row height for header (slightly taller)
-      worksheet['!rows'] = [{ hpt: 22 }]; // Header row height
+      // =====================================================
+      // 5. CREATE WORKBOOK AND DOWNLOAD
+      // =====================================================
 
-      // Create workbook
-      const workbook = XLSX.utils.book_new();
-      const sheetName = hasSegmentation ? `Estadisticas_${targetSegment}` : 'Estadisticas';
-      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31)); // Max 31 chars
+      const wb = XLSX.utils.book_new();
+      const sheetName = hasSegmentation
+        ? `Stats_${targetSegment}`.substring(0, 31)
+        : 'Estadisticas';
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-      // Generate filename with date
+      // Generate filename
       const now = new Date();
       const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
       const filename = `Biometric_Analisis_${dateStr}.xlsx`;
 
-      // Download
-      XLSX.writeFile(workbook, filename);
-      console.log('Excel Export: File saved as', filename);
+      // Write file using browser-compatible method (Blob + download link)
+      // This bypasses the fs.writeFileSync issue in xlsx-js-style
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+      // Create download link and trigger download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      console.log('Excel Export: Success! File saved as', filename);
 
     } catch (error) {
-      console.error('Error exporting to Excel:', error);
-      alert('Error al exportar a Excel. Inténtelo de nuevo.');
+      console.error('Excel Export Error:', error);
+      alert(`Error al exportar a Excel: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   }, [data, selectedVars, activeSegment, hasSegmentation]);
 
@@ -759,6 +781,53 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
       alert('Error al exportar a PDF. Inténtelo de nuevo.');
     }
   }, [data, selectedVars, activeSegment, hasSegmentation]);
+
+  /**
+   * AI Interpretation Handler
+   */
+  const handleIAInterpretation = async () => {
+    if (!data || selectedVars.length === 0) return;
+
+    setInterpreting(true);
+    try {
+      // 1. Filter stats to reduce token usage and noise
+      // Create a simplified stats object containing only selected variables and the active segment
+      const targetSegment = hasSegmentation ? activeSegment : 'General';
+      const statsToSend = selectedVars.reduce((acc, varName) => {
+        if (data.statistics[varName] && data.statistics[varName][targetSegment]) {
+          acc[varName] = data.statistics[varName][targetSegment];
+        }
+        return acc;
+      }, {} as any);
+
+      // 2. Fetch interpretation from AI endpoint
+      // Using API_BASE_URL logic similar to stats.ts
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/ai/interpret-table`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stats: statsToSend,
+          segment: targetSegment
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setAiInterpretation(result.interpretation);
+      setShowInterpretationModal(true);
+
+    } catch (error) {
+      console.error("Error interpretando tabla:", error);
+      alert("Error al consultar a la IA. Por favor, intenta de nuevo.");
+    } finally {
+      setInterpreting(false);
+    }
+  };
 
   // Render tooltip wrapper
   const withTooltip = (label: string, tooltipKey: string, children: React.ReactNode) => (
@@ -1820,12 +1889,48 @@ export function TablaInteligenteView({ onBack }: TablaInteligenteViewProps) {
             <ActionToolbar
               onExportExcel={handleExportExcel}
               onExportPDF={handleExportPDF}
-              onAIInterpretation={() => console.log('AI Interpretation')}
+              onAIInterpretation={handleIAInterpretation}
+              isAnalyzing={interpreting}
               onContinueToChat={() => console.log('Continue to Chat')}
             />
           )}
         </div>
       </div>
+
+      {/* AI Interpretation Result Modal */}
+      <Dialog open={showInterpretationModal} onOpenChange={setShowInterpretationModal}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl text-teal-700">
+              <Sparkles className="w-5 h-5" />
+              Análisis Inteligente de Datos
+            </DialogTitle>
+            <DialogDescription>
+              Interpretación generada automáticamente basada en las estadísticas descriptivas actuales.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 prose prose-slate prose-sm max-w-none bg-slate-50 p-6 rounded-lg border border-slate-100">
+            {aiInterpretation ? (
+              <ReactMarkdown
+                components={{
+                  h3: ({ node, ...props }) => <h3 className="text-lg font-bold text-teal-800 mt-4 mb-2" {...props} />,
+                  ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-2 space-y-1" {...props} />,
+                  li: ({ node, ...props }) => <li className="text-slate-700" {...props} />,
+                  strong: ({ node, ...props }) => <strong className="font-semibold text-slate-900" {...props} />,
+                }}
+              >
+                {aiInterpretation}
+              </ReactMarkdown>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                <p>Generando análisis...</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

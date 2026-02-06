@@ -1,0 +1,37 @@
+[
+  {
+    "id": "2e052603-2141-4fb6-86a4-cd565bb6e3f8",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-02-06T12:19:12.724006",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "24d9bbf4-e213-48d4-9f30-dee273f4849a",
+    "title": "Actúa como un experto bioestadístico. Analiza la s...",
+    "timestamp": "2026-02-06T12:20:17.102533",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "bce55824-ac16-4a56-971b-174ffa20ba81",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-02-06T12:27:04.569569",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "7ad3d814-09bd-4821-8f8f-d9e0c6223132",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-02-06T12:27:19.513975",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  },
+  {
+    "id": "c561ee03-9467-4539-8862-665ca134b00e",
+    "title": "Actúa como un bioestadístico. Analiza la siguiente...",
+    "timestamp": "2026-02-06T12:41:28.354194",
+    "message_count": 2,
+    "model": "gemini-2.5-flash"
+  }
+]

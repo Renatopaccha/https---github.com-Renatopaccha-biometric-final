@@ -576,141 +576,141 @@ El usuario ha sido transferido al chat principal. Mantén este contexto en memor
       const autoTable = autoTableModule.default;
 
       const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let yPos = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let yPos = 20;
 
-    // Título
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Tabla de Contingencia', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
+      // Título
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Tabla de Contingencia', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 8;
 
-    // Subtítulo
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${String(rowVar)} × ${String(colVar)}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 5;
-
-    // Fecha
-    doc.setFontSize(9);
-    doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 5;
-
-    if (segmentBy) {
-      doc.text(`Segmentado por: ${segmentBy}`, pageWidth / 2, yPos, { align: 'center' });
+      // Subtítulo
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${String(rowVar)} × ${String(colVar)}`, pageWidth / 2, yPos, { align: 'center' });
       yPos += 5;
-    }
-    yPos += 10;
 
-    // Iterar sobre todos los segmentos
-    normalizedTableData.segments.forEach((segmentName, segIdx) => {
-      const table = normalizedTableData.tables[segmentName];
-      if (!table) return;
+      // Fecha
+      doc.setFontSize(9);
+      doc.text(`Generado: ${new Date().toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 5;
 
-      // Título del segmento
-      if (segmentBy && normalizedTableData.segments.length > 1) {
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`Segmento: ${segmentName}`, 14, yPos);
-        yPos += 6;
+      if (segmentBy) {
+        doc.text(`Segmentado por: ${segmentBy}`, pageWidth / 2, yPos, { align: 'center' });
+        yPos += 5;
       }
+      yPos += 10;
 
-      // Construir datos de la tabla en formato stacked
-      const tableHeaders = ['', 'Métrica', ...table.col_categories, 'Total'];
-      const tableData: any[] = [];
+      // Iterar sobre todos los segmentos
+      normalizedTableData.segments.forEach((segmentName, segIdx) => {
+        const table = normalizedTableData.tables[segmentName];
+        if (!table) return;
 
-      // Filas de datos
-      table.row_categories.forEach(rowCat => {
+        // Título del segmento
+        if (segmentBy && normalizedTableData.segments.length > 1) {
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`Segmento: ${segmentName}`, 14, yPos);
+          yPos += 6;
+        }
+
+        // Construir datos de la tabla en formato stacked
+        const tableHeaders = ['', 'Métrica', ...table.col_categories, 'Total'];
+        const tableData: any[] = [];
+
+        // Filas de datos
+        table.row_categories.forEach(rowCat => {
+          selectedMetrics.forEach((metricKey, metricIdx) => {
+            const metricLabel = getMetricLabel(metricKey);
+            const row = [
+              metricIdx === 0 ? rowCat : '',  // Solo mostrar categoría en primera fila
+              metricLabel
+            ];
+
+            // Valores de columnas
+            table.col_categories.forEach(colCat => {
+              const cellData = table.cells[rowCat][colCat];
+              const value = getCellValue(cellData, metricKey);
+              row.push(metricKey === 'frecuencia' ? value.toString() : value.toFixed(2));
+            });
+
+            // Total de fila
+            const totalData = table.row_totals[rowCat];
+            const totalValue = getCellValue(totalData, metricKey);
+            row.push(metricKey === 'frecuencia' ? totalValue.toString() : totalValue.toFixed(2));
+
+            tableData.push(row);
+          });
+        });
+
+        // Fila TOTAL
         selectedMetrics.forEach((metricKey, metricIdx) => {
           const metricLabel = getMetricLabel(metricKey);
           const row = [
-            metricIdx === 0 ? rowCat : '',  // Solo mostrar categoría en primera fila
+            metricIdx === 0 ? 'TOTAL' : '',
             metricLabel
           ];
 
-          // Valores de columnas
+          // Totales de columnas
           table.col_categories.forEach(colCat => {
-            const cellData = table.cells[rowCat][colCat];
+            const cellData = table.col_totals[colCat];
             const value = getCellValue(cellData, metricKey);
             row.push(metricKey === 'frecuencia' ? value.toString() : value.toFixed(2));
           });
 
-          // Total de fila
-          const totalData = table.row_totals[rowCat];
-          const totalValue = getCellValue(totalData, metricKey);
-          row.push(metricKey === 'frecuencia' ? totalValue.toString() : totalValue.toFixed(2));
+          // Grand total
+          const grandTotalValue = metricKey === 'frecuencia' ? table.grand_total : 100.0;
+          row.push(grandTotalValue.toString());
 
           tableData.push(row);
         });
-      });
 
-      // Fila TOTAL
-      selectedMetrics.forEach((metricKey, metricIdx) => {
-        const metricLabel = getMetricLabel(metricKey);
-        const row = [
-          metricIdx === 0 ? 'TOTAL' : '',
-          metricLabel
-        ];
-
-        // Totales de columnas
-        table.col_categories.forEach(colCat => {
-          const cellData = table.col_totals[colCat];
-          const value = getCellValue(cellData, metricKey);
-          row.push(metricKey === 'frecuencia' ? value.toString() : value.toFixed(2));
+        autoTable(doc, {
+          startY: yPos,
+          head: [tableHeaders],
+          body: tableData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [243, 244, 246],
+            textColor: [31, 41, 55],
+            lineColor: [209, 213, 219],
+            lineWidth: 0.1,
+            fontStyle: 'bold',
+            halign: 'center'
+          },
+          bodyStyles: {
+            lineColor: [209, 213, 219],
+            lineWidth: 0.1,
+            textColor: [55, 65, 81],
+            halign: 'center'
+          },
+          columnStyles: {
+            0: { halign: 'left', cellWidth: 25 },
+            1: { halign: 'left', cellWidth: 20 }
+          },
+          alternateRowStyles: { fillColor: [255, 255, 255] },
+          margin: { left: 14, right: 14 },
+          styles: { fontSize: 8, cellPadding: 2 },
+          didParseCell: (data) => {
+            // Resaltar fila TOTAL
+            const dataRowIndex = data.row.index;
+            const totalRowStart = table.row_categories.length * selectedMetrics.length;
+            if (dataRowIndex >= totalRowStart) {
+              data.cell.styles.fillColor = [229, 231, 235];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         });
 
-        // Grand total
-        const grandTotalValue = metricKey === 'frecuencia' ? table.grand_total : 100.0;
-        row.push(grandTotalValue.toString());
+        yPos = (doc as any).lastAutoTable.finalY + 10;
 
-        tableData.push(row);
-      });
-
-      autoTable(doc, {
-        startY: yPos,
-        head: [tableHeaders],
-        body: tableData,
-        theme: 'grid',
-        headStyles: {
-          fillColor: [243, 244, 246],
-          textColor: [31, 41, 55],
-          lineColor: [209, 213, 219],
-          lineWidth: 0.1,
-          fontStyle: 'bold',
-          halign: 'center'
-        },
-        bodyStyles: {
-          lineColor: [209, 213, 219],
-          lineWidth: 0.1,
-          textColor: [55, 65, 81],
-          halign: 'center'
-        },
-        columnStyles: {
-          0: { halign: 'left', cellWidth: 25 },
-          1: { halign: 'left', cellWidth: 20 }
-        },
-        alternateRowStyles: { fillColor: [255, 255, 255] },
-        margin: { left: 14, right: 14 },
-        styles: { fontSize: 8, cellPadding: 2 },
-        didParseCell: (data) => {
-          // Resaltar fila TOTAL
-          const dataRowIndex = data.row.index;
-          const totalRowStart = table.row_categories.length * selectedMetrics.length;
-          if (dataRowIndex >= totalRowStart) {
-            data.cell.styles.fillColor = [229, 231, 235];
-            data.cell.styles.fontStyle = 'bold';
-          }
+        // Nueva página si es necesario (y no es el último segmento)
+        if (yPos > 250 && segIdx < normalizedTableData.segments.length - 1) {
+          doc.addPage();
+          yPos = 20;
         }
       });
-
-      yPos = (doc as any).lastAutoTable.finalY + 10;
-
-      // Nueva página si es necesario (y no es el último segmento)
-      if (yPos > 250 && segIdx < normalizedTableData.segments.length - 1) {
-        doc.addPage();
-        yPos = 20;
-      }
-    });
 
       const fileName = `Tabla_Contingencia_${String(rowVar)}_x_${String(colVar)}${segmentBy ? `_por_${String(segmentBy)}` : ''}.pdf`;
       doc.save(fileName);

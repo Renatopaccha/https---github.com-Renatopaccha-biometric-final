@@ -644,6 +644,75 @@ Si el usuario pregunta algo simple, responde y luego invítalo a explorar un asp
                 "error": error_msg
             }
 
+    async def interpret_statistics(self, stats_data: dict, segment_name: str = "General") -> str:
+        """
+        Genera una interpretación narrativa profesional de la tabla de estadísticas.
+        
+        Args:
+            stats_data: Dictionary with variable names as keys and their statistics as values
+            segment_name: Name of the segment being analyzed (default: "General")
+            
+        Returns:
+            Markdown-formatted interpretation string
+        """
+        import json
+        
+        # 1. Definimos la PERSONA y el OBJETIVO CLARO
+        system_instruction = """
+        Actúa como un Bioestadístico Senior y Consultor de Investigación Clínica para la plataforma 'Biometric'.
+        Tu objetivo es analizar una tabla de estadísticas descriptivas y generar un resumen interpretativo 
+        que el investigador pueda copiar y pegar directamente en la sección de "Resultados preliminares" de su paper o tesis.
+        """
+
+        # 2. Definimos las REGLAS DE ANÁLISIS (El "Cerebro" del prompt)
+        analysis_rules = """
+        AL ANALIZAR LOS DATOS, BUSCA ACTIVAMENTE:
+        1. **Prueba de Normalidad (Crucial):** Revisa el campo 'normality_test'. 
+           - Si dice 'Normal', confirma que se pueden usar pruebas paramétricas (t-Student, ANOVA).
+           - Si dice 'No Normal', SUGIERE OBLIGATORIAMENTE usar pruebas no paramétricas (U de Mann-Whitney, Kruskal-Wallis).
+           
+        2. **Homogeneidad de los datos:** Mira el Coeficiente de Variación (cv).
+           - Si es < 10%: Datos muy homogéneos.
+           - Si es > 30%: Datos muy dispersos/heterogéneos (posibles valores atípicos o muestras mixtas).
+           
+        3. **Asimetría:** Compara la Media vs. Mediana.
+           - Si difieren significativamente (>10%), menciona hacia dónde está el sesgo (asimetría positiva/negativa).
+        
+        4. **Hallazgos Clínicos (Contexto):** Usa los nombres de las variables.
+           - Ejemplo: Si la variable es "Edad" y la media es 85, comenta que es una población geriátrica. 
+           - Si es "Glucosa" y la media es 200, alerta sobre posibles valores diabéticos en la muestra.
+        """
+
+        # 3. Definimos el FORMATO DE SALIDA (Para que se vea bonito en el Frontend)
+        output_format = f"""
+        FORMATO DE RESPUESTA (Usa Markdown):
+        
+        ### 🧠 Interpretación Automática: Segmento '{segment_name}'
+        
+        **Resumen General:**
+        [Un párrafo de 3-4 líneas resumiendo el comportamiento general de las variables]
+        
+        **Hallazgos Clave:**
+        * ✅ **Distribución:** [Comentario sobre Normalidad y qué test usar]
+        * 📊 **Dispersión:** [Comentario sobre el CV y estabilidad de datos]
+        * 🚨 **Atención:** [Menciona cualquier variable con asimetría fuerte o valores extremos/outliers detectados por la curtosis]
+        
+        **Recomendación:**
+        [Una frase final aconsejando el siguiente paso analítico]
+        """
+
+        # Construimos el prompt final
+        prompt = f"{system_instruction}\n\n{analysis_rules}\n\n{output_format}\n\nDATOS A ANALIZAR:\n{json.dumps(stats_data, indent=2)}"
+
+        try:
+            # Usamos una temperatura baja (0.3 - 0.4) para que sea analítico y preciso, no "creativo"
+            response = self.model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.35} 
+            )
+            return response.text
+        except Exception as e:
+            return f"Error al generar interpretación: {str(e)}"
 
 
 # Singleton instance - only instantiate if API key is configured
