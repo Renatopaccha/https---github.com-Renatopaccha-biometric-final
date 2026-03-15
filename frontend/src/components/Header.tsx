@@ -23,6 +23,10 @@ export function Header({ currentView, isSidebarOpen, onToggleSidebar }: HeaderPr
     asistente: {
       title: 'Asistente Virtual',
       subtitle: 'Chat inteligente para análisis de datos con IA'
+    },
+    muestreo: {
+      title: 'Muestreo',
+      subtitle: 'Cálculo, selección, randomización y muestras complejas'
     }
   };
 

@@ -1,10 +1,10 @@
-import { LayoutDashboard, Database, BarChart3, FlaskConical, Settings, Sparkles, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, Database, BarChart3, FlaskConical, Settings, Sparkles, ChevronLeft, Target } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   activeView: string;
-  onNavigate: (view: 'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente') => void;
+  onNavigate: (view: 'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente' | 'muestreo') => void;
 }
 
 const navigationItems = [
@@ -12,6 +12,7 @@ const navigationItems = [
   { name: 'Preprocesamiento', icon: Database, view: 'preprocesamiento' as const },
   { name: 'Estadística Descriptiva', icon: BarChart3, view: 'estadistica' as const },
   { name: 'Asistente IA', icon: Sparkles, view: 'asistente' as const },
+  { name: 'Muestreo', icon: Target, view: 'muestreo' as const },
   { name: 'Pruebas de Hipótesis', icon: FlaskConical, view: null },
   { name: 'Configuración', icon: Settings, view: null },
 ];
