@@ -1,10 +1,12 @@
-import { Bell, Menu } from 'lucide-react';
+import { Bell, Menu, PanelLeftOpen } from 'lucide-react';
 
 interface HeaderProps {
   currentView: string;
+  isSidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
-export function Header({ currentView }: HeaderProps) {
+export function Header({ currentView, isSidebarOpen, onToggleSidebar }: HeaderProps) {
   const titles = {
     inicio: {
       title: 'Inicio',
@@ -29,8 +31,17 @@ export function Header({ currentView }: HeaderProps) {
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
-        <button className="lg:hidden p-2 hover:bg-gray-50 rounded-md transition-colors">
-          <Menu className="w-5 h-5 text-gray-600" />
+        {/* Toggle sidebar button — always visible, changes icon based on state */}
+        <button
+          onClick={onToggleSidebar}
+          className="p-2 hover:bg-gray-50 rounded-md transition-colors"
+          aria-label={isSidebarOpen ? 'Cerrar menú lateral' : 'Abrir menú lateral'}
+        >
+          {isSidebarOpen ? (
+            <Menu className="w-5 h-5 text-gray-600" />
+          ) : (
+            <PanelLeftOpen className="w-5 h-5 text-gray-600" />
+          )}
         </button>
         <div>
           <h1 className="text-gray-900">{current.title}</h1>

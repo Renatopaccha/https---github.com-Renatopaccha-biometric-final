@@ -10,7 +10,7 @@ const DescriptiveStats = lazy(() => import('./components/DescriptiveStats').then
 const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ default: m.AIAssistant })));
 
 export default function App() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const [currentView, setCurrentView] = useState<'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente'>('inicio');
   const [selectedChatId, setSelectedChatId] = useState<string | undefined>(undefined);
@@ -25,17 +25,25 @@ export default function App() {
     setCurrentView(view as any);
   };
 
+  const toggleSidebar = () => setIsSidebarOpen(prev => !prev);
+
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar — floats visually over the gray background */}
       <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        isOpen={isSidebarOpen}
+        onToggle={toggleSidebar}
         activeView={currentView}
         onNavigate={(view) => handleNavigation(view)}
       />
 
+      {/* Main content area — adapts width automatically */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header currentView={currentView} />
+        <Header
+          currentView={currentView}
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={toggleSidebar}
+        />
 
         <main className="flex-1 overflow-auto bg-gray-50">
           {currentView === 'inicio' && <Home />}
