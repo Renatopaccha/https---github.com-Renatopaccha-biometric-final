@@ -8,7 +8,7 @@ import { Home } from './components/Home';
 const DataPreprocessing = lazy(() => import('./components/DataPreprocessing').then(m => ({ default: m.DataPreprocessing })));
 const DescriptiveStats = lazy(() => import('./components/DescriptiveStats').then(m => ({ default: m.DescriptiveStats })));
 const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ default: m.AIAssistant })));
-const MuestreoHub = lazy(() => import('./components/muestreo/MuestreoHub').then(m => ({ default: m.MuestreoHub })));
+const Muestreo = lazy(() => import('./components/muestreo/Muestreo').then(m => ({ default: m.Muestreo })));
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -56,7 +56,7 @@ export default function App() {
             {currentView === 'preprocesamiento' && <DataPreprocessing />}
             {currentView === 'estadistica' && <DescriptiveStats onNavigate={handleNavigation} />}
             {currentView === 'asistente' && <AIAssistant initialChatId={selectedChatId} />}
-            {currentView === 'muestreo' && <MuestreoHub onSelectView={(view) => console.log('Muestreo view:', view)} />}
+            {currentView === 'muestreo' && <Muestreo onNavigate={handleNavigation} />}
           </Suspense>
         </main>
       </div>

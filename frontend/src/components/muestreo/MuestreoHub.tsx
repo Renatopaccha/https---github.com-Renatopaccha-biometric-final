@@ -1,6 +1,5 @@
 import { Calculator, Users, Shuffle, BarChart2 } from 'lucide-react';
-
-type MuestreoView = 'calculo-tamano' | 'seleccion-muestras' | 'randomizacion' | 'muestras-complejas';
+import { MuestreoView } from './Muestreo';
 
 interface MuestreoHubProps {
   onSelectView: (view: MuestreoView) => void;
@@ -8,28 +7,28 @@ interface MuestreoHubProps {
 
 const muestreoCards = [
   {
-    id: 'calculo-tamano' as MuestreoView,
+    id: 'calculo-tamano' as const,
     title: 'Cálculo de tamaños de muestra',
     description:
       'Función esencial para determinar el número de sujetos necesarios antes de recolectar datos. Universal e indispensable para estudiantes de tesis e investigadores.',
     icon: Calculator,
   },
   {
-    id: 'seleccion-muestras' as MuestreoView,
+    id: 'seleccion-muestras' as const,
     title: 'Selección de muestras',
     description:
       'Herramientas para aplicar métodos de muestreo probabilístico: aleatorio simple, estratificado, por conglomerados y sistemático.',
     icon: Users,
   },
   {
-    id: 'randomizacion' as MuestreoView,
+    id: 'randomizacion' as const,
     title: 'Asignación a tratamientos (Randomización)',
     description:
       'Generación de secuencias de asignación aleatoria, ideal para ensayos clínicos y estudios experimentales rigurosos.',
     icon: Shuffle,
   },
   {
-    id: 'muestras-complejas' as MuestreoView,
+    id: 'muestras-complejas' as const,
     title: 'Estimación con muestras complejas',
     description:
       'Análisis avanzado para datos provenientes de encuestas nacionales de salud (con factores de expansión, estratos y conglomerados).',
