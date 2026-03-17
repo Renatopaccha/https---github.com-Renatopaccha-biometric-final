@@ -79,9 +79,10 @@ const tagColors: Record<string, { bg: string; text: string; border: string }> = 
 
 interface SampleSizeCalculatorProps {
   onBack: () => void;
+  onSelectItem?: (category: string, item: string) => void;
 }
 
-export function SampleSizeCalculator({ onBack }: SampleSizeCalculatorProps) {
+export function SampleSizeCalculator({ onBack, onSelectItem }: SampleSizeCalculatorProps) {
   const [activeTab, setActiveTab] = useState<string>('intervalos');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
@@ -270,6 +271,7 @@ export function SampleSizeCalculator({ onBack }: SampleSizeCalculatorProps) {
                 key={itemKey}
                 onMouseEnter={() => setHoveredItem(itemKey)}
                 onMouseLeave={() => setHoveredItem(null)}
+                onClick={() => onSelectItem?.(activeTab, item.name)}
                 className="group relative text-left flex flex-col justify-between cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                 style={{
                   background: 'white',
