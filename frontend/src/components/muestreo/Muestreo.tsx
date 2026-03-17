@@ -6,6 +6,10 @@ import { ProportionCalculator } from './ProportionCalculator';
 import { OddsRatioCalculator } from './OddsRatioCalculator';
 import { RelativeRiskCalculator } from './RelativeRiskCalculator';
 import { ConcordanceCalculator } from './ConcordanceCalculator';
+import { DiagnosticTestCalculator } from './DiagnosticTestCalculator';
+import { ComparisonMeansCalculator } from './ComparisonMeansCalculator';
+import { ComparisonProportionsCalculator } from './ComparisonProportionsCalculator';
+import { CaseControlCalculator } from './CaseControlCalculator';
 
 export type MuestreoView =
   | 'hub'
@@ -15,6 +19,10 @@ export type MuestreoView =
   | 'odds-ratio'
   | 'riesgo-relativo'
   | 'concordancia'
+  | 'pruebas-diagnosticas'
+  | 'casos-controles'
+  | 'comparacion-medias'
+  | 'comparacion-proporciones'
   | 'seleccion-muestras'
   | 'randomizacion'
   | 'muestras-complejas';
@@ -37,6 +45,14 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
       setCurrentView('riesgo-relativo');
     } else if (item === 'Concordancia') {
       setCurrentView('concordancia');
+    } else if (item === 'Pruebas Diagnósticas') {
+      setCurrentView('pruebas-diagnosticas');
+    } else if (item === 'Comparación de Medias') {
+      setCurrentView('comparacion-medias');
+    } else if (item === 'Comparación de Proporciones') {
+      setCurrentView('comparacion-proporciones');
+    } else if (item === 'Estudios de Casos y Controles') {
+      setCurrentView('casos-controles');
     }
     // Future calculators can be routed here
   };
@@ -62,6 +78,14 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
         return <RelativeRiskCalculator onBack={() => setCurrentView('calculo-tamano')} />;
       case 'concordancia':
         return <ConcordanceCalculator onBack={() => setCurrentView('calculo-tamano')} />;
+      case 'pruebas-diagnosticas':
+        return <DiagnosticTestCalculator onBack={() => setCurrentView('calculo-tamano')} />;
+      case 'comparacion-medias':
+        return <ComparisonMeansCalculator onBack={() => setCurrentView('calculo-tamano')} />;
+      case 'comparacion-proporciones':
+        return <ComparisonProportionsCalculator onBack={() => setCurrentView('calculo-tamano')} />;
+      case 'casos-controles':
+        return <CaseControlCalculator onBack={() => setCurrentView('calculo-tamano')} />;
       // Future sub-views:
       // case 'seleccion-muestras':
       //   return <SeleccionMuestrasView onBack={() => setCurrentView('hub')} />;
