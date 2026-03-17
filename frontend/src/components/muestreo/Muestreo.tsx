@@ -5,6 +5,7 @@ import { MediaCalculator } from './MediaCalculator';
 import { ProportionCalculator } from './ProportionCalculator';
 import { OddsRatioCalculator } from './OddsRatioCalculator';
 import { RelativeRiskCalculator } from './RelativeRiskCalculator';
+import { ConcordanceCalculator } from './ConcordanceCalculator';
 
 export type MuestreoView =
   | 'hub'
@@ -13,6 +14,7 @@ export type MuestreoView =
   | 'proporcion'
   | 'odds-ratio'
   | 'riesgo-relativo'
+  | 'concordancia'
   | 'seleccion-muestras'
   | 'randomizacion'
   | 'muestras-complejas';
@@ -33,6 +35,8 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
       setCurrentView('odds-ratio');
     } else if (item === 'Riesgo Relativo') {
       setCurrentView('riesgo-relativo');
+    } else if (item === 'Concordancia') {
+      setCurrentView('concordancia');
     }
     // Future calculators can be routed here
   };
@@ -56,6 +60,8 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
         return <OddsRatioCalculator onBack={() => setCurrentView('calculo-tamano')} />;
       case 'riesgo-relativo':
         return <RelativeRiskCalculator onBack={() => setCurrentView('calculo-tamano')} />;
+      case 'concordancia':
+        return <ConcordanceCalculator onBack={() => setCurrentView('calculo-tamano')} />;
       // Future sub-views:
       // case 'seleccion-muestras':
       //   return <SeleccionMuestrasView onBack={() => setCurrentView('hub')} />;
