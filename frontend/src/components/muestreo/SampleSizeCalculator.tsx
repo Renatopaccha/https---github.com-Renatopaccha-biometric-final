@@ -54,7 +54,7 @@ const categories: Record<string, Category> = {
       { name: 'Estudios de Casos y Controles', desc: 'Diseños retrospectivos que comparan exposición entre enfermos y sanos.', tag: 'Epidemiología', formula: 'Método de Kelsey' },
       { name: 'Estudios de Cohorte', desc: 'Diseños prospectivos que siguen expuestos y no expuestos.', tag: 'Epidemiología', formula: 'Método de Kelsey' },
       { name: 'Estudios de Equivalencia', desc: 'Demostrar que dos tratamientos tienen efectos similares.', tag: 'Ensayos clínicos', formula: 'Margen de equivalencia δ' },
-      { name: 'Pruebas Diagnósticas', desc: 'Comparar rendimiento diagnóstico entre dos pruebas.', tag: 'Diagnóstico', formula: 'Método de Zhou' },
+      { name: 'Pruebas Diagnósticas (Hipótesis)', desc: 'Comparar rendimiento diagnóstico entre dos pruebas (grupos independientes o emparejados).', tag: 'Diagnóstico', formula: 'χ² / McNemar' },
       { name: 'Calidad de Lotes', desc: 'Verificar si un lote cumple un estándar de calidad aceptable.', tag: 'Especializado', formula: 'LQAS' },
       { name: 'Supervivencia', desc: 'Estudios de tiempo hasta un evento (ej. mortalidad, recaída).', tag: 'Avanzado', formula: 'Método de Schoenfeld' },
       { name: 'Coeficiente de Correlación', desc: 'Detectar asociación lineal significativa entre dos variables.', tag: 'Estadístico', formula: 'Transformación Z de Fisher' },
