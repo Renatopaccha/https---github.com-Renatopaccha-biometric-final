@@ -288,7 +288,18 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
               return (
                 <div
                   key={m.id}
-                  onClick={() => setDetalle(detalle === m.id ? null : m.id)}
+                  onClick={() => {
+                    const metodosConComponente = ["simple", "sistematico", "estratificado", "conglomerados-mono", "conglomerados-bi"];
+                    if (metodosConComponente.includes(m.id) && onNavigate) {
+                      if (m.id === "simple") onNavigate('muestreo-simple-aleatorio');
+                      if (m.id === "sistematico") onNavigate('muestreo-sistematico');
+                      if (m.id === "estratificado") onNavigate('muestreo-estratificado');
+                      if (m.id === "conglomerados-mono") onNavigate('muestreo-conglomerados-monoetapico');
+                      if (m.id === "conglomerados-bi") onNavigate('muestreo-conglomerados-bietapico');
+                    } else {
+                      setDetalle(detalle === m.id ? null : m.id);
+                    }
+                  }}
                   onMouseEnter={() => setHover(m.id)}
                   onMouseLeave={() => setHover(null)}
                   style={{
@@ -452,6 +463,7 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
                       if (metodoCurrent.id === "sistematico") onNavigate('muestreo-sistematico');
                       if (metodoCurrent.id === "estratificado") onNavigate('muestreo-estratificado');
                       if (metodoCurrent.id === "conglomerados-mono") onNavigate('muestreo-conglomerados-monoetapico');
+                      if (metodoCurrent.id === "conglomerados-bi") onNavigate('muestreo-conglomerados-bietapico');
                       // Add other routings here
                     }
                   }}

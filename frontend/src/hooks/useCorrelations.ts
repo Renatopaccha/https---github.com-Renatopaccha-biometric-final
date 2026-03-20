@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import type { FilterRule } from '../types/stats';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE_URL = `${BASE_URL}/api/v1`;
@@ -14,13 +15,6 @@ interface CorrelationMatrixResult {
     method: string;
     variables: string[];
     matrix: { [var1: string]: { [var2: string]: CorrelationPairData } };
-}
-
-export interface FilterRule {
-    id: string;
-    column: string;
-    operator: '=' | '≠' | '>' | '<' | '≥' | '≤';
-    value: number;
 }
 
 export interface CorrelationResponse {

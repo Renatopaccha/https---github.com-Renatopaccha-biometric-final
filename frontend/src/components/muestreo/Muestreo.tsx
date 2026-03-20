@@ -23,6 +23,7 @@ import MuestreoSimpleAleatorio from './MuestreoSimpleAleatorio';
 import MuestreoSistematico from './MuestreoSistematico';
 import MuestreoEstratificado from './MuestreoEstratificado';
 import MuestreoConglomeradosMonoetapico from './MuestreoConglomeradosMonoetapico';
+import MuestreoConglomeradosBietapico from './MuestreoConglomeradosBietapico';
 
 export type MuestreoView =
   | 'hub'
@@ -47,6 +48,7 @@ export type MuestreoView =
   | 'muestreo-sistematico'
   | 'muestreo-estratificado'
   | 'muestreo-conglomerados-monoetapico'
+  | 'muestreo-conglomerados-bietapico'
   | 'randomizacion'
   | 'muestras-complejas';
 
@@ -134,7 +136,7 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
 
   // Cuando la vista cambia a un método de muestreo que requiere todos los datos, cargar todos los datos
   useEffect(() => {
-    if ((currentView === 'muestreo-simple-aleatorio' || currentView === 'muestreo-sistematico' || currentView === 'muestreo-estratificado' || currentView === 'muestreo-conglomerados-monoetapico') && sessionId && !allExcelData) {
+    if ((currentView === 'muestreo-simple-aleatorio' || currentView === 'muestreo-sistematico' || currentView === 'muestreo-estratificado' || currentView === 'muestreo-conglomerados-monoetapico' || currentView === 'muestreo-conglomerados-bietapico') && sessionId && !allExcelData) {
       fetchAllData();
     }
   }, [currentView, sessionId, allExcelData, fetchAllData]);
@@ -226,6 +228,8 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
         return <MuestreoEstratificado onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
       case 'muestreo-conglomerados-monoetapico':
         return <MuestreoConglomeradosMonoetapico onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
+      case 'muestreo-conglomerados-bietapico':
+        return <MuestreoConglomeradosBietapico onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
       // Future sub-views:
       // case 'randomizacion':
       //   return <RandomizacionView onBack={() => setCurrentView('hub')} />;

@@ -104,9 +104,18 @@ const excelStyles = {
   }
 };
 
+const filterOperators = [
+  { value: '>', label: 'Mayor que' },
+  { value: '<', label: 'Menor que' },
+  { value: '>=', label: 'Mayor o igual' },
+  { value: '<=', label: 'Menor o igual' },
+  { value: '==', label: 'Igual a' },
+  { value: '!=', label: 'Diferente de' },
+];
+
 export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesViewProps) {
   // Context and hooks
-  const { sessionId, columns: availableColumns } = useDataContext();
+  const { sessionId, columns: availableColumns, healthReport } = useDataContext();
   const { correlationData, calculateCorrelations, loading, error } = useCorrelations();
 
   // AI Interpretation State
@@ -118,6 +127,7 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
   // UI state
   const [selectedVars, setSelectedVars] = useState<string[]>([]);
   const [method, setMethod] = useState<CorrelationMethod>('pearson');
+  const [activeMethodTab, setActiveMethodTab] = useState<'pearson' | 'spearman' | 'kendall'>('pearson');
   const [segmentBy, setSegmentBy] = useState<string>('');
   const [activeSegmentTab, setActiveSegmentTab] = useState<string>('General');
 
@@ -127,6 +137,44 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
 
   const varsRef = useRef<HTMLDivElement>(null);
   const segmentRef = useRef<HTMLDivElement>(null);
+
+  // Filter state (copiado de Tabla Inteligente)
+  const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
+  const [filterActive, setFilterActive] = useState(false);
+  const [filterLogic, setFilterLogic] = useState<'AND' | 'OR'>('AND');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+
+  // Derivados de columnas según tipo (para ayudar al usuario a seleccionar variables correctas)
+  const numericColumns = useMemo(() => {
+    if (!healthReport?.columns) return availableColumns;
+    return availableColumns.filter(col => {
+      const dtype = (healthReport.columns[col]?.data_type || '').toLowerCase();
+      return dtype.includes('int') || dtype.includes('float') || dtype.includes('double') || dtype.includes('numeric');
+    });
+  }, [availableColumns, healthReport]);
+
+  // Si el reporte de salud detecta tipos, eliminamos variables no numéricas seleccionadas
+  useEffect(() => {
+    if (!healthReport?.columns) return;
+    setSelectedVars(prev => prev.filter(v => numericColumns.includes(v)));
+  }, [healthReport, numericColumns]);
+
+  const categoricalColumns = useMemo(() => {
+    if (!healthReport?.columns) return availableColumns;
+    const totalRows = healthReport.total_rows || 1;
+    return availableColumns.filter(col => {
+      const colInfo = healthReport.columns[col];
+      const dtype = (colInfo?.data_type || '').toLowerCase();
+      const uniqueCount = colInfo?.unique_count || 0;
+      return (
+        dtype.includes('object') ||
+        dtype.includes('str') ||
+        dtype.includes('category') ||
+        (uniqueCount > 1 && uniqueCount <= 20) ||
+        (uniqueCount > 1 && uniqueCount / totalRows < 0.1)
+      );
+    });
+  }, [availableColumns, healthReport]);
 
   // Create stable key for selectedVars to avoid unnecessary re-renders
   const selectedVarsKey = useMemo(() => selectedVars.join(','), [selectedVars]);
@@ -144,18 +192,20 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
         ? ['pearson', 'spearman', 'kendall']
         : [method];
 
+      const activeFilters = filterActive && filterRules.length > 0 ? filterRules : undefined;
+
       calculateCorrelations(
         sessionId,
         selectedVars,
         methods,
         segmentBy || null,
-        [], // Current filters logic removed for brevity in this fix
-        'AND'
+        activeFilters,
+        filterLogic
       );
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [selectedVarsKey, method, segmentBy, sessionId, calculateCorrelations]);
+  }, [selectedVarsKey, method, segmentBy, sessionId, calculateCorrelations, filterActive, filterLogic, filterRules]);
 
   // Auto-update activeSegmentTab when correlationData changes
   useEffect(() => {
@@ -165,6 +215,13 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
       setActiveSegmentTab('General');
     }
   }, [correlationData]);
+
+  // Keep active tab in sync when user isn't comparing all methods
+  useEffect(() => {
+    if (method !== 'comparar_todos') {
+      setActiveMethodTab(method as 'pearson' | 'spearman' | 'kendall');
+    }
+  }, [method]);
 
   // Click outside handlers
   useEffect(() => {
@@ -184,6 +241,31 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
     setSelectedVars(prev =>
       prev.includes(variable) ? prev.filter(v => v !== variable) : [...prev, variable]
     );
+  };
+
+  // FILTER MANAGEMENT (copiado de Tabla Inteligente)
+  const addFilterRule = () => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : Date.now().toString();
+    const defaultColumn = numericColumns.length > 0 ? numericColumns[0] : availableColumns[0] || '';
+    setFilterRules([...filterRules, { id, column: defaultColumn, operator: '>', value: 0 }]);
+  };
+
+  const removeLastRule = () => {
+    if (filterRules.length > 0) {
+      setFilterRules(filterRules.slice(0, -1));
+    }
+  };
+
+  const clearAllRules = () => {
+    setFilterRules([]);
+  };
+
+  const updateRule = (id: string, field: keyof FilterRule, value: string | number) => {
+    setFilterRules(prevRules => prevRules.map(rule => (
+      rule.id === id ? { ...rule, [field]: value } : rule
+    )));
   };
 
   // Helper function to render table rows
@@ -393,45 +475,159 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
           <h2 className="text-2xl font-bold">Correlaciones</h2>
         </div>
         {/* Controls Simplified */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative" ref={varsRef}>
-            <button onClick={() => setShowVarsDropdown(!showVarsDropdown)} className="px-4 py-2 border rounded bg-white">
-              Variables ({selectedVars.length}) <ChevronDown className="inline w-4" />
+            <button onClick={() => setShowVarsDropdown(!showVarsDropdown)} className="px-4 py-2 border rounded bg-white flex items-center gap-2">
+              <span>Variables ({selectedVars.length})</span>
+              <ChevronDown className="inline w-4" />
             </button>
             {showVarsDropdown && (
-              <div className="absolute top-full right-0 bg-white border shadow-lg z-10 w-64 max-h-60 overflow-auto p-2">
-                {availableColumns.map(c => (
-                  <label key={c} className="flex gap-2 p-2 hover:bg-gray-50 cursor-pointer">
-                    <input type="checkbox" checked={selectedVars.includes(c)} onChange={() => toggleVariable(c)} />
-                    {c}
-                  </label>
-                ))}
+              <div className="absolute top-full right-0 bg-white border shadow-lg z-10 w-72 max-h-60 overflow-auto p-2">
+                <div className="text-xs text-slate-500 mb-2">Sólo variables numéricas (int/float) están habilitadas</div>
+                {availableColumns.map(c => {
+                  const isNumeric = numericColumns.includes(c);
+                  return (
+                    <label key={c} className={`flex gap-2 p-2 hover:bg-gray-50 cursor-pointer ${!isNumeric ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <input type="checkbox" checked={selectedVars.includes(c)} disabled={!isNumeric} onChange={() => isNumeric && toggleVariable(c)} />
+                      {c}
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>
-          {/* Segment */}
+
           <div className="relative" ref={segmentRef}>
-            <button onClick={() => setShowSegmentDropdown(!showSegmentDropdown)} className="px-4 py-2 border rounded bg-white">
-              Segmentar <ChevronDown className="inline w-4" />
+            <button onClick={() => setShowSegmentDropdown(!showSegmentDropdown)} className="px-4 py-2 border rounded bg-white flex items-center gap-2">
+              <span>Segmentar</span> <ChevronDown className="inline w-4" />
             </button>
             {showSegmentDropdown && (
-              <div className="absolute top-full right-0 bg-white border shadow-lg z-10 w-48 p-2">
-                <div onClick={() => { setSegmentBy(''); setShowSegmentDropdown(false) }} className="p-2 hover:bg-gray-50 cursor-pointer">Ninguno</div>
-                {availableColumns.map(c => (
-                  <div key={c} onClick={() => { setSegmentBy(c); setShowSegmentDropdown(false) }} className="p-2 hover:bg-gray-50 cursor-pointer">{c}</div>
+              <div className="absolute top-full right-0 bg-white border shadow-lg z-10 w-52 p-2">
+                <div onClick={() => { setSegmentBy(''); setShowSegmentDropdown(false); }} className="p-2 hover:bg-gray-50 cursor-pointer">Ninguno</div>
+                {categoricalColumns.map(c => (
+                  <div key={c} onClick={() => { setSegmentBy(c); setShowSegmentDropdown(false); }} className="p-2 hover:bg-gray-50 cursor-pointer">{c}</div>
                 ))}
               </div>
             )}
           </div>
+
+          <button onClick={() => setIsFilterExpanded(prev => !prev)} className="px-4 py-2 border rounded bg-white flex items-center gap-2">
+            <Filter className="w-4" />
+            <span>Filtro</span>
+            {filterRules.length > 0 && <span className="text-xs font-semibold text-slate-600">({filterRules.length})</span>}
+          </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-8">
         {loading && <div className="flex justify-center"><Loader2 className="animate-spin" /></div>}
+
+        {/* Filtros */}
+        {isFilterExpanded && (
+          <div className="bg-white p-4 rounded shadow mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Filtros</span>
+                <span className="text-xs text-slate-500">(se aplican antes del cálculo de correlaciones)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setFilterActive(!filterActive)} className={`px-3 py-1 rounded border ${filterActive ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}`}>
+                  {filterActive ? 'Activo' : 'Inactivo'}
+                </button>
+                <button onClick={() => setFilterLogic(prev => prev === 'AND' ? 'OR' : 'AND')} className="px-3 py-1 rounded border bg-white border-slate-200">
+                  Lógica: {filterLogic}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {filterRules.map((rule, idx) => (
+                <div key={rule.id} className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-500">Regla {idx + 1}:</span>
+                  <select value={rule.column} onChange={e => updateRule(rule.id, 'column', e.target.value)} className="px-2 py-1 border rounded">
+                    {numericColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                  <select value={rule.operator} onChange={e => updateRule(rule.id, 'operator', e.target.value)} className="px-2 py-1 border rounded">
+                    {filterOperators.map(op => (
+                      <option key={op.value} value={op.value}>{op.label}</option>
+                    ))}
+                  </select>
+                  <input type="number" value={rule.value} onChange={e => updateRule(rule.id, 'value', Number(e.target.value))} className="px-2 py-1 border rounded w-24" />
+                </div>
+              ))}
+
+              <div className="flex flex-wrap gap-2">
+                <button onClick={addFilterRule} className="px-3 py-1 rounded border bg-white border-slate-200">Agregar regla</button>
+                <button onClick={removeLastRule} className="px-3 py-1 rounded border bg-white border-slate-200" disabled={filterRules.length === 0}>Eliminar última</button>
+                <button onClick={clearAllRules} className="px-3 py-1 rounded border bg-white border-slate-200" disabled={filterRules.length === 0}>Limpiar</button>
+              </div>
+
+              {!filterActive && <div className="text-xs text-slate-500">Activa los filtros para aplicarlos al cálculo.</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Advertencia: variables numéricas */}
+        {!loading && !error && numericColumns.length === 0 && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded mb-6">
+            <strong>Atención:</strong> No se detectaron variables numéricas (int/float) en el conjunto de datos. Verifica tu archivo o ejecuta un análisis de calidad para identificar el tipo de cada columna.
+          </div>
+        )}
+
+        {/* Método y fórmulas */}
+        {!loading && !error && (
+          <div className="bg-white p-4 rounded shadow mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">Método</span>
+                {(['pearson', 'spearman', 'comparar_todos'] as const).map((m) => (
+                  <button key={m} onClick={() => setMethod(m)} className={`px-3 py-1 rounded border ${method === m ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`}>
+                    {m === 'pearson' ? 'Pearson' : m === 'spearman' ? 'Spearman' : 'Comparar todos'}
+                  </button>
+                ))}
+              </div>
+              <div className="text-xs text-slate-500">El cálculo se actualizará automáticamente.</div>
+            </div>
+
+            {method === 'comparar_todos' && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold">Ver:</span>
+                {(['pearson', 'spearman', 'kendall'] as const).map(m => (
+                  <button key={m} onClick={() => setActiveMethodTab(m)} className={`px-3 py-1 rounded border ${activeMethodTab === m ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`}>
+                    {m === 'pearson' ? 'Pearson' : m === 'spearman' ? 'Spearman' : 'Kendall'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 text-xs text-slate-600">
+              {(method === 'pearson' || (method === 'comparar_todos' && activeMethodTab === 'pearson')) && (
+                <div>
+                  <strong>Pearson (r):</strong> mide la asociación lineal entre dos variables numéricas.<br />
+                  Fórmula: r = Σ((x - x̄)(y - ȳ)) / (√Σ(x - x̄)² · √Σ(y - ȳ)²)
+                </div>
+              )}
+              {(method === 'spearman' || (method === 'comparar_todos' && activeMethodTab === 'spearman')) && (
+                <div>
+                  <strong>Spearman (ρ):</strong> correlación de rangos, útil para relaciones monótonas no lineales.<br />
+                  Fórmula: ρ = 1 - (6 Σ dᵢ²) / (n(n² - 1)), donde dᵢ es la diferencia entre rangos.
+                </div>
+              )}
+              {method === 'comparar_todos' && activeMethodTab === 'kendall' && (
+                <div>
+                  <strong>Kendall (τ):</strong> mide asociación basada en concordancias y discordancias de pares.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {!loading && !error && selectedVars.length >= 2 && (
           <div className="bg-white p-6 rounded shadow overflow-auto">
             <table className="w-full border-collapse">
-              <tbody>{renderTableRows()}</tbody>
+              <tbody>{renderTableRows(method === 'comparar_todos' ? activeMethodTab : undefined)}</tbody>
             </table>
           </div>
         )}
