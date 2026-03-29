@@ -9,11 +9,12 @@ const DataPreprocessing = lazy(() => import('./components/DataPreprocessing').th
 const DescriptiveStats = lazy(() => import('./components/DescriptiveStats').then(m => ({ default: m.DescriptiveStats })));
 const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ default: m.AIAssistant })));
 const Muestreo = lazy(() => import('./components/muestreo/Muestreo').then(m => ({ default: m.Muestreo })));
+const InferenciaParametros = lazy(() => import('./components/InferenciaParametros').then(m => ({ default: m.InferenciaParametros })));
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const [currentView, setCurrentView] = useState<'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente' | 'muestreo'>('inicio');
+  const [currentView, setCurrentView] = useState<'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente' | 'muestreo' | 'inferencia'>('inicio');
   const [selectedChatId, setSelectedChatId] = useState<string | undefined>(undefined);
 
   const handleNavigation = (view: string, chatId?: string) => {
@@ -57,6 +58,7 @@ export default function App() {
             {currentView === 'estadistica' && <DescriptiveStats onNavigate={handleNavigation} />}
             {currentView === 'asistente' && <AIAssistant initialChatId={selectedChatId} />}
             {currentView === 'muestreo' && <Muestreo onNavigate={handleNavigation} />}
+            {currentView === 'inferencia' && <InferenciaParametros onNavigate={handleNavigation} />}
           </Suspense>
         </main>
       </div>

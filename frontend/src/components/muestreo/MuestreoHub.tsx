@@ -37,6 +37,17 @@ const muestreoCards = [
 ];
 
 export function MuestreoHub({ onSelectView }: MuestreoHubProps) {
+  const handleCardClick = (cardId: (typeof muestreoCards)[number]['id']) => {
+    const viewByCard: Record<(typeof muestreoCards)[number]['id'], MuestreoView> = {
+      'calculo-tamano': 'calculo-tamano',
+      'seleccion-muestras': 'seleccion-muestras',
+      randomizacion: 'randomizacion',
+      'muestras-complejas': 'muestras-complejas',
+    };
+
+    onSelectView(viewByCard[cardId]);
+  };
+
   return (
     <div className="min-h-full bg-slate-50 flex flex-col">
       {/* Header */}
@@ -63,8 +74,9 @@ export function MuestreoHub({ onSelectView }: MuestreoHubProps) {
               const Icon = card.icon;
               return (
                 <button
+                  type="button"
                   key={card.id}
-                  onClick={() => onSelectView(card.id)}
+                  onClick={() => handleCardClick(card.id)}
                   className="group bg-white rounded-xl border-2 border-slate-200 p-8 text-left transition-all hover:shadow-xl hover:border-teal-500 hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
                   style={{
                     animation: `muestreoFadeUp 0.45s ease-out ${index * 80}ms both`,

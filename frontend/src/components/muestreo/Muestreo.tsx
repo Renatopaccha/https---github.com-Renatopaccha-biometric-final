@@ -24,6 +24,10 @@ import MuestreoSistematico from './MuestreoSistematico';
 import MuestreoEstratificado from './MuestreoEstratificado';
 import MuestreoConglomeradosMonoetapico from './MuestreoConglomeradosMonoetapico';
 import MuestreoConglomeradosBietapico from './MuestreoConglomeradosBietapico';
+import MuestreoConglomeradosMonoetapicoEstratificado from './MuestreoConglomeradosMonoetapicoEstratificado';
+import MuestreoConglomeradosBietapicoEstratificado from './MuestreoConglomeradosBietapicoEstratificado';
+import AsignacionSujetosTratamientos from './AsignacionSujetosTratamientos';
+import EstimacionMuestrasComplejas from './EstimacionMuestrasComplejas';
 
 export type MuestreoView =
   | 'hub'
@@ -49,8 +53,11 @@ export type MuestreoView =
   | 'muestreo-estratificado'
   | 'muestreo-conglomerados-monoetapico'
   | 'muestreo-conglomerados-bietapico'
+  | 'muestreo-conglomerados-monoetapico-estratificado'
+  | 'muestreo-conglomerados-bietapico-estratificado'
   | 'randomizacion'
-  | 'muestras-complejas';
+  | 'muestras-complejas'
+  | 'estimacion-muestras-complejas';
 
 interface MuestreoProps {
   onNavigate?: (view: string, chatId?: string) => void;
@@ -61,6 +68,51 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') +
 export function Muestreo({ onNavigate }: MuestreoProps) {
   const [currentView, setCurrentView] = useState<MuestreoView>('hub');
   const { sessionId, data, totalRows } = useDataContext();
+
+  const navigateToView = (view: string) => {
+    const aliasToCanonical: Record<string, MuestreoView> = {
+      'estimacion-muestras-complejas': 'muestras-complejas',
+    };
+    const normalizedView = aliasToCanonical[view] || (view as MuestreoView);
+
+    const allowedViews: MuestreoView[] = [
+      'hub',
+      'calculo-tamano',
+      'media',
+      'proporcion',
+      'odds-ratio',
+      'riesgo-relativo',
+      'concordancia',
+      'pruebas-diagnosticas',
+      'pruebas-diagnosticas-hipotesis',
+      'calidad-lotes',
+      'supervivencia',
+      'casos-controles',
+      'estudios-cohorte',
+      'estudios-equivalencia',
+      'coeficiente-correlacion',
+      'comparacion-medias',
+      'comparacion-proporciones',
+      'seleccion-muestras',
+      'muestreo-simple-aleatorio',
+      'muestreo-sistematico',
+      'muestreo-estratificado',
+      'muestreo-conglomerados-monoetapico',
+      'muestreo-conglomerados-bietapico',
+      'muestreo-conglomerados-monoetapico-estratificado',
+      'muestreo-conglomerados-bietapico-estratificado',
+      'randomizacion',
+      'muestras-complejas',
+      'estimacion-muestras-complejas',
+    ];
+
+    if (allowedViews.includes(normalizedView)) {
+      setCurrentView(normalizedView === 'estimacion-muestras-complejas' ? 'muestras-complejas' : normalizedView);
+      return;
+    }
+
+    setCurrentView('seleccion-muestras');
+  };
 
   // ── Estado para almacenar TODOS los datos del Excel ──
   const [allExcelData, setAllExcelData] = useState<any[] | null>(null);
@@ -136,7 +188,7 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
 
   // Cuando la vista cambia a un método de muestreo que requiere todos los datos, cargar todos los datos
   useEffect(() => {
-    if ((currentView === 'muestreo-simple-aleatorio' || currentView === 'muestreo-sistematico' || currentView === 'muestreo-estratificado' || currentView === 'muestreo-conglomerados-monoetapico' || currentView === 'muestreo-conglomerados-bietapico') && sessionId && !allExcelData) {
+    if ((currentView === 'muestreo-simple-aleatorio' || currentView === 'muestreo-sistematico' || currentView === 'muestreo-estratificado' || currentView === 'muestreo-conglomerados-monoetapico' || currentView === 'muestreo-conglomerados-bietapico' || currentView === 'muestreo-conglomerados-monoetapico-estratificado' || currentView === 'muestreo-conglomerados-bietapico-estratificado' || currentView === 'muestras-complejas') && sessionId && !allExcelData) {
       fetchAllData();
     }
   }, [currentView, sessionId, allExcelData, fetchAllData]);
@@ -219,7 +271,7 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
       case 'coeficiente-correlacion':
         return <CorrelationCalculator onBack={() => setCurrentView('calculo-tamano')} />;
       case 'seleccion-muestras':
-        return <SeleccionMuestras onBack={() => setCurrentView('hub')} onNavigate={(view) => setCurrentView(view as MuestreoView)} />;
+        return <SeleccionMuestras onBack={() => setCurrentView('hub')} onNavigate={navigateToView} />;
       case 'muestreo-simple-aleatorio':
         return <MuestreoSimpleAleatorio onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
       case 'muestreo-sistematico':
@@ -230,11 +282,23 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
         return <MuestreoConglomeradosMonoetapico onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
       case 'muestreo-conglomerados-bietapico':
         return <MuestreoConglomeradosBietapico onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
+      case 'muestreo-conglomerados-monoetapico-estratificado':
+        return <MuestreoConglomeradosMonoetapicoEstratificado onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
+      case 'muestreo-conglomerados-bietapico-estratificado':
+        return <MuestreoConglomeradosBietapicoEstratificado onBack={() => setCurrentView('seleccion-muestras')} datosExcel={allExcelData} loadingExcel={loadingExcel} />;
       // Future sub-views:
-      // case 'randomizacion':
-      //   return <RandomizacionView onBack={() => setCurrentView('hub')} />;
-      // case 'muestras-complejas':
-      //   return <MuestrasComplejasView onBack={() => setCurrentView('hub')} />;
+      case 'randomizacion':
+        return <AsignacionSujetosTratamientos onBack={() => setCurrentView('hub')} />;
+      case 'muestras-complejas':
+      case 'estimacion-muestras-complejas':
+        return (
+          <EstimacionMuestrasComplejas
+            onBack={() => setCurrentView('hub')}
+            datosExcel={allExcelData}
+            loadingExcel={loadingExcel}
+            onContinuarChat={() => onNavigate?.('asistente')}
+          />
+        );
       default:
         return <MuestreoHub onSelectView={setCurrentView} />;
     }

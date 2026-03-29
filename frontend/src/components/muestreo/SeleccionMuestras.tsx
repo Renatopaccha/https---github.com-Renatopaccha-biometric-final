@@ -8,6 +8,16 @@
 
 import { useState } from "react";
 
+const ROUTES_BY_METHOD: Record<string, string> = {
+  simple: 'muestreo-simple-aleatorio',
+  sistematico: 'muestreo-sistematico',
+  estratificado: 'muestreo-estratificado',
+  'conglomerados-mono': 'muestreo-conglomerados-monoetapico',
+  'conglomerados-bi': 'muestreo-conglomerados-bietapico',
+  'conglomerados-mono-est': 'muestreo-conglomerados-monoetapico-estratificado',
+  'conglomerados-bi-est': 'muestreo-conglomerados-bietapico-estratificado',
+};
+
 /* ═══════════════════════════════════════════════════
    DATOS DE LOS MÉTODOS DE MUESTREO
    ═══════════════════════════════════════════════════ */
@@ -183,15 +193,26 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
     <div style={{ fontFamily: "'DM Sans', 'Segoe UI', sans-serif", background: "#fafbfc", minHeight: "100vh", color: "#111827" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
       <style>{`
-        @keyframes slideUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes cinematicFadeInUp { from { opacity:0; transform:translateY(24px) } to { opacity:1; transform:translateY(0) } }
         @keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
         @keyframes slideRight { from { opacity:0; transform:translateX(24px) } to { opacity:1; transform:translateX(0) } }
+        .sm-stagger-1 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.04s; }
+        .sm-stagger-2 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.08s; }
+        .sm-stagger-3 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.12s; }
+        .sm-stagger-4 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.16s; }
+        .sm-stagger-5 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.20s; }
+        .sm-card { transition: all 0.3s cubic-bezier(0.16,1,0.3,1); }
+        .sm-card:hover { transform: translateY(-4px) scale(1.015); box-shadow: 0 12px 32px rgba(16,185,129,0.13), 0 2px 8px rgba(0,0,0,0.04) !important; }
+        .sm-guide-card { transition: all 0.35s cubic-bezier(0.16,1,0.3,1); }
+        .sm-guide-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+        .sm-btn-action { transition: all 0.3s cubic-bezier(0.16,1,0.3,1) !important; }
+        .sm-btn-action:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 8px 20px rgba(16,185,129,0.22) !important; }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 28px 60px" }}>
 
         {/* ── Breadcrumb ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
+        <div className="sm-stagger-1" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
           <span onClick={onBack} style={{ color: "#10b981", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
             <BackIcon /> Muestreo
           </span>
@@ -200,7 +221,7 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
         </div>
 
         {/* ── Encabezado ── */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, marginBottom: 6, flexWrap: "wrap" }}>
+        <div className="sm-stagger-1" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, marginBottom: 6, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
             <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,#ecfdf5,#d1fae5)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 24 }}>
               👥
@@ -228,14 +249,14 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
         </div>
 
         {/* ── Banner IA ── */}
-        <div style={{ background: "linear-gradient(135deg,#ecfdf5,#f0fdf4)", border: "1px solid #a7f3d0", borderRadius: 12, padding: "12px 16px", margin: "18px 0 24px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#065f46", cursor: "pointer" }}>
+        <div className="sm-stagger-2" style={{ background: "linear-gradient(135deg,#ecfdf5,#f0fdf4)", border: "1px solid #a7f3d0", borderRadius: 12, padding: "12px 16px", margin: "18px 0 24px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#065f46", cursor: "pointer" }}>
           <div style={{ background: "#10b981", borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", color: "white", flexShrink: 0 }}><SparkleIcon /></div>
           <span><b>Asistente IA:</b> ¿No sabes qué método elegir? Cuéntame las características de tu población y el tipo de estudio, y te recomendaré el método de muestreo más adecuado.</span>
           <span style={{ marginLeft: "auto", color: "#10b981", flexShrink: 0 }}><ArrowRight /></span>
         </div>
 
         {/* ── Barra de búsqueda + filtros ── */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 28, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="sm-stagger-3" style={{ display: "flex", gap: 12, marginBottom: 28, flexWrap: "wrap", alignItems: "center" }}>
           {/* Búsqueda */}
           <div style={{ flex: "1 1 260px", display: "flex", alignItems: "center", gap: 10, background: "white", border: "1.5px solid #e5e7eb", borderRadius: 11, padding: "10px 14px", transition: "border-color .2s" }}>
             <span style={{ color: "#9ca3af", display: "flex", flexShrink: 0 }}><SearchIcon /></span>
@@ -271,7 +292,7 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
         </div>
 
         {/* ── Layout principal ── */}
-        <div style={{ display: "grid", gridTemplateColumns: detalle ? "1fr 400px" : "1fr", gap: 20, alignItems: "start" }}>
+        <div className="sm-stagger-4" style={{ display: "grid", gridTemplateColumns: detalle ? "1fr 400px" : "1fr", gap: 20, alignItems: "start" }}>
 
           {/* ── Grid de tarjetas ── */}
           <div style={{ display: "grid", gridTemplateColumns: detalle ? "1fr 1fr" : "repeat(3, 1fr)", gap: 16 }}>
@@ -288,14 +309,11 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
               return (
                 <div
                   key={m.id}
+                  className="sm-card"
                   onClick={() => {
-                    const metodosConComponente = ["simple", "sistematico", "estratificado", "conglomerados-mono", "conglomerados-bi"];
-                    if (metodosConComponente.includes(m.id) && onNavigate) {
-                      if (m.id === "simple") onNavigate('muestreo-simple-aleatorio');
-                      if (m.id === "sistematico") onNavigate('muestreo-sistematico');
-                      if (m.id === "estratificado") onNavigate('muestreo-estratificado');
-                      if (m.id === "conglomerados-mono") onNavigate('muestreo-conglomerados-monoetapico');
-                      if (m.id === "conglomerados-bi") onNavigate('muestreo-conglomerados-bietapico');
+                    const route = ROUTES_BY_METHOD[m.id];
+                    if (route && onNavigate) {
+                      onNavigate(route);
                     } else {
                       setDetalle(detalle === m.id ? null : m.id);
                     }
@@ -306,11 +324,10 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
                     background: isSelected ? "white" : "white",
                     border: isSelected ? "2px solid #10b981" : isHovered ? "2px solid #d1fae5" : "2px solid #e5e7eb",
                     borderRadius: 16, padding: 20, cursor: "pointer",
-                    transition: "all .22s ease",
                     boxShadow: isSelected
                       ? "0 8px 25px rgba(16,185,129,.12), 0 2px 8px rgba(0,0,0,.04)"
-                      : isHovered ? "0 4px 16px rgba(16,185,129,.08), 0 2px 6px rgba(0,0,0,.03)" : "none",
-                    animation: `slideUp .3s ease ${i * 0.05}s both`,
+                      : "none",
+                    animation: `cinematicFadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) ${i * 0.07}s both`,
                     position: "relative",
                     overflow: "hidden",
                   }}
@@ -448,22 +465,19 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
                 </div>
 
                 {/* Botón de acción */}
-                <button style={{
+                <button className="sm-btn-action" style={{
                   width: "100%", padding: "13px 20px", borderRadius: 12, border: "none",
                   cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit",
                   background: "linear-gradient(135deg,#10b981,#059669)", color: "white",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  boxShadow: "0 4px 14px rgba(16,185,129,.3)", transition: "all .25s",
+                  boxShadow: "0 4px 14px rgba(16,185,129,.3)",
                 }}
                   onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.98)"; }}
                   onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
                   onClick={() => {
                     if (onNavigate) {
-                      if (metodoCurrent.id === "simple") onNavigate('muestreo-simple-aleatorio');
-                      if (metodoCurrent.id === "sistematico") onNavigate('muestreo-sistematico');
-                      if (metodoCurrent.id === "estratificado") onNavigate('muestreo-estratificado');
-                      if (metodoCurrent.id === "conglomerados-mono") onNavigate('muestreo-conglomerados-monoetapico');
-                      if (metodoCurrent.id === "conglomerados-bi") onNavigate('muestreo-conglomerados-bietapico');
+                      const route = ROUTES_BY_METHOD[metodoCurrent.id];
+                      if (route) onNavigate(route);
                       // Add other routings here
                     }
                   }}
@@ -477,7 +491,7 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
 
         {/* ── Sección comparativa ── */}
         {!detalle && (
-          <div style={{ marginTop: 40, animation: "fadeIn .4s ease" }}>
+          <div className="sm-stagger-5" style={{ marginTop: 40 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <div style={{ height: 2, flex: 1, background: "#f3f4f6", borderRadius: 2 }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".08em", whiteSpace: "nowrap" }}>
@@ -492,7 +506,7 @@ export default function SeleccionMuestras({ onBack, onNavigate }: { onBack?: () 
                 { emoji: "🎯", titulo: "Necesitas representar subgrupos clave", metodo: "Muestreo Aleatorio Estratificado", color: "#a855f7", bg: "#faf5ff", border: "#e9d5ff" },
                 { emoji: "🏙️", titulo: "Población geográficamente dispersa", metodo: "Muestreo por Conglomerados (Bi o Mono etápico)", color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
               ].map((g) => (
-                <div key={g.titulo} style={{ background: g.bg, border: `1.5px solid ${g.border}`, borderRadius: 14, padding: "16px 18px" }}>
+                <div key={g.titulo} className="sm-guide-card" style={{ background: g.bg, border: `1.5px solid ${g.border}`, borderRadius: 14, padding: "16px 18px" }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>{g.emoji}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6, lineHeight: 1.4 }}>{g.titulo}</div>
                   <div style={{ fontSize: 12, color: g.color, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>

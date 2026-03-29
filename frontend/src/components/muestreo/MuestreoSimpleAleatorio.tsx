@@ -246,6 +246,15 @@ export default function MuestreoSimpleAleatorio({ datosExcel = null, loadingExce
       <style>{`
         @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
         @keyframes spin    { to{transform:rotate(360deg)} }
+        @keyframes cinematicFadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes cinematicScaleIn { from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
+        .animate-stagger-1 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.05s; }
+        .animate-stagger-2 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.1s; }
+        .animate-stagger-3 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.15s; }
+        .animate-stagger-4 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.2s; }
+        .animate-stagger-5 { animation: cinematicFadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.25s; }
+        .btn-cinematic { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important; }
+        .btn-cinematic:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 8px 20px rgba(16,185,129,0.18) !important; }
         .row-hover:hover { background: #ecfdf5 !important; }
         input[type=number]::-webkit-outer-spin-button,
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
@@ -255,7 +264,7 @@ export default function MuestreoSimpleAleatorio({ datosExcel = null, loadingExce
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 24px 60px" }}>
 
         {/* ── Breadcrumb ── */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
+        <div className="animate-stagger-1" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
           <span onClick={onBack} style={{ color:"#10b981", display:"flex", alignItems:"center", gap:4, cursor:"pointer" }}>
             <BackIcon /> Selección de Muestras
           </span>
@@ -264,7 +273,7 @@ export default function MuestreoSimpleAleatorio({ datosExcel = null, loadingExce
         </div>
 
         {/* ── Título ── */}
-        <div style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
+        <div className="animate-stagger-1" style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
           <div style={{ width:48, height:48, borderRadius:14, background:"linear-gradient(135deg,#ecfdf5,#d1fae5)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:22 }}>🎲</div>
           <div>
             <h1 style={{ fontSize:23, fontWeight:800, margin:0, color:"#111827", letterSpacing:"-.02em" }}>Muestreo Simple Aleatorio</h1>
@@ -273,13 +282,13 @@ export default function MuestreoSimpleAleatorio({ datosExcel = null, loadingExce
         </div>
 
         {/* ── Banner IA ── */}
-        <div style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
+        <div className="animate-stagger-2" style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
           <div style={{ background:"#10b981", borderRadius:7, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:"white", flexShrink:0 }}><SparkleIcon /></div>
           <span><b>Asistente IA:</b> Usa este método cuando tu población sea homogénea y tengas un listado completo. Si tu n calculado supera el 10% de la población, considera aplicar corrección por finitud.</span>
         </div>
 
         {/* ── Modo de entrada ── */}
-        <div style={{ marginBottom:22 }}>
+        <div className="animate-stagger-3" style={{ marginBottom:22 }}>
           <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", color:"#6b7280", marginBottom:9 }}>Fuente de datos</div>
           <div style={{ display:"flex", gap:4, background:"#f3f4f6", borderRadius:12, padding:4 }}>
             {[
@@ -323,7 +332,7 @@ export default function MuestreoSimpleAleatorio({ datosExcel = null, loadingExce
         </div>
 
         {/* ── Formulario ── */}
-        <div style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 10px", boxShadow:"0 1px 4px rgba(0,0,0,.03)" }}>
+        <div className="animate-stagger-4" style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 10px", boxShadow:"0 4px 20px rgba(0,0,0,.04)" }}>
 
           {/* ─ Sección Paso 1 ─ */}
           <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", color:"#10b981", marginBottom:14, display:"flex", alignItems:"center", gap:6 }}>
@@ -414,8 +423,9 @@ export default function MuestreoSimpleAleatorio({ datosExcel = null, loadingExce
         )}
 
         {/* ── Botones ── */}
-        <div style={{ display:"flex", gap:10, marginTop:16 }}>
+        <div className="animate-stagger-5" style={{ display:"flex", gap:10, marginTop:16 }}>
           <button
+            className={canCalc && !errores ? "btn-cinematic" : ""}
             onClick={handleCalc}
             disabled={!canCalc || !!errores || calculando}
             style={{

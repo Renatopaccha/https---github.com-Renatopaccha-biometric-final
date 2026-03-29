@@ -256,28 +256,36 @@ export default function MuestreoEstratificado({ datosExcel = null, loadingExcel 
       <style>{`
         @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes cinematicFadeInUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .me-stagger-1{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.04s}
+        .me-stagger-2{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.08s}
+        .me-stagger-3{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.12s}
+        .me-stagger-4{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.16s}
+        .me-stagger-5{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.20s}
+        .me-btn-cin{transition:all .3s cubic-bezier(.16,1,.3,1)!important}
+        .me-btn-cin:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 8px 20px rgba(16,185,129,.18)!important}
         .rh:hover{background:#ecfdf5!important}
         .tbtn:hover{opacity:.8}
         input[type=number],input[type=text]{outline:none;-moz-appearance:textfield}
         input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       `}</style>
       <div style={{ maxWidth:920, margin:"0 auto", padding:"28px 24px 60px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
+        <div className="me-stagger-1" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
           <span onClick={onBack} style={{ color:"#10b981", display:"flex", alignItems:"center", gap:4, cursor:"pointer" }}><BackIcon/> Selección de Muestras</span>
           <span style={{ color:"#d1d5db" }}>/</span><span style={{ color:"#374151", fontWeight:600 }}>Muestreo Aleatorio Estratificado</span>
         </div>
-        <div style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
+        <div className="me-stagger-1" style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
           <div style={{ width:52, height:52, borderRadius:14, background:"linear-gradient(135deg,#fdf4ff,#f3e8ff)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"#a855f7" }}><LayersIcon/></div>
           <div>
             <h1 style={{ fontSize:23, fontWeight:800, margin:0, color:"#111827", letterSpacing:"-.02em" }}>Muestreo Aleatorio Estratificado</h1>
             <p style={{ fontSize:14, color:"#6b7280", margin:"4px 0 0", lineHeight:1.5 }}>Divide la población en estratos y selecciona aleatoriamente dentro de cada uno</p>
           </div>
         </div>
-        <div style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
+        <div className="me-stagger-2" style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
           <div style={{ background:"#10b981", borderRadius:7, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:"white", flexShrink:0 }}><SpkIcon/></div>
           <span><b>Asistente IA:</b> Usa este método cuando tu población tenga subgrupos con características distintas (edad, sexo, región). Garantiza representación de todos los grupos. La asignación proporcional es la más recomendada para estudios descriptivos.</span>
         </div>
-        <div style={{ marginBottom:20 }}>
+        <div className="me-stagger-3" style={{ marginBottom:20 }}>
           <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", color:"#6b7280", marginBottom:9 }}>Fuente de datos</div>
           <div style={{ display:"flex", gap:4, background:"#f3f4f6", borderRadius:12, padding:4 }}>
             {[
@@ -294,7 +302,7 @@ export default function MuestreoEstratificado({ datosExcel = null, loadingExcel 
             ))}
           </div>
         </div>
-        <div style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 14px", boxShadow:"0 1px 4px rgba(0,0,0,.03)" }}>
+        <div className="me-stagger-4" style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 14px", boxShadow:"0 4px 20px rgba(0,0,0,.04)" }}>
           <SLbl step="Paso 1" label={modo==="manual"?"Definición de estratos":"Tipo de datos y columnas"}/>
           {modo === "manual" && (
             <div style={{ marginBottom:18 }}>
@@ -388,8 +396,8 @@ export default function MuestreoEstratificado({ datosExcel = null, loadingExcel 
           <div onClick={()=>setOrdenar(!ordenar)} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 15px", borderRadius:12, cursor:"pointer", border:ordenar?"2px solid #10b981":"2px solid #e5e7eb", background:ordenar?"#f0fdf4":"white", transition:"all .2s", userSelect:"none", maxWidth:500 }}><div style={{ width:21, height:21, borderRadius:6, border:ordenar?"2px solid #10b981":"2px solid #d1d5db", background:ordenar?"#10b981":"white", display:"flex", alignItems:"center", justifyContent:"center", transition:"all .2s", flexShrink:0 }}>{ordenar&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}</div><div><div style={{ fontSize:14, fontWeight:600, color:ordenar?"#065f46":"#374151" }}>Ordenar muestra dentro de cada estrato</div></div></div>
         </div>
         {errMsg&&<div style={{ background:"#fef2f2", border:"1.5px solid #fca5a5", borderRadius:11, padding:"11px 15px", marginTop:14, fontSize:13, color:"#dc2626", fontWeight:600 }}>⚠️ {errMsg}</div>}
-        <div style={{ display:"flex", gap:10, marginTop:16 }}>
-          <button onClick={handleCalc} disabled={!canCalc||loading} style={{ flex:1, padding:"13px 20px", borderRadius:12, border:"none", cursor:canCalc&&!loading?"pointer":"not-allowed", fontSize:15, fontWeight:700, fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:9, transition:"all .25s", background:canCalc?"linear-gradient(135deg,#10b981,#059669)":"#e5e7eb", color:canCalc?"white":"#9ca3af" }}>{loading?<><Spin/> Generando...</>:<><CalcIcon/> {res?"Regenerar muestra":"Generar muestra estratificada"}</>}</button>
+        <div className="me-stagger-5" style={{ display:"flex", gap:10, marginTop:16 }}>
+          <button className={canCalc&&!loading?"me-btn-cin":""} onClick={handleCalc} disabled={!canCalc||loading} style={{ flex:1, padding:"13px 20px", borderRadius:12, border:"none", cursor:canCalc&&!loading?"pointer":"not-allowed", fontSize:15, fontWeight:700, fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:9, transition:"all .25s", background:canCalc?"linear-gradient(135deg,#10b981,#059669)":"#e5e7eb", color:canCalc?"white":"#9ca3af", boxShadow:canCalc?"0 4px 14px rgba(16,185,129,.3)":"none" }}>{loading?<><Spin/> Generando...</>:<><CalcIcon/> {res?"Regenerar muestra":"Generar muestra estratificada"}</>}</button>
           <button onClick={handleReset} style={{ padding:"13px 18px", borderRadius:12, border:"2px solid #e5e7eb", cursor:"pointer", fontSize:14, fontWeight:600, fontFamily:"inherit", background:"white", color:"#6b7280", display:"flex", alignItems:"center", gap:6 }}><RstIcon/> Limpiar</button>
         </div>
         {err&&<div style={{ background:"#fef2f2", border:"1.5px solid #fca5a5", borderRadius:11, padding:"11px 15px", marginTop:14, fontSize:13, color:"#dc2626" }}>❌ {err}</div>}

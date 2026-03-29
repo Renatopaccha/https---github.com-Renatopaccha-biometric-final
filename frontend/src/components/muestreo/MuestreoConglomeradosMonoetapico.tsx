@@ -240,29 +240,37 @@ export default function ConglomeradosMonoetapico({ datosExcel = null, loadingExc
       <style>{`
         @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes cinematicFadeInUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .cm-stagger-1{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.04s}
+        .cm-stagger-2{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.08s}
+        .cm-stagger-3{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.12s}
+        .cm-stagger-4{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.16s}
+        .cm-stagger-5{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.20s}
+        .cm-btn-cin{transition:all .3s cubic-bezier(.16,1,.3,1)!important}
+        .cm-btn-cin:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 8px 20px rgba(16,185,129,.18)!important}
         .rh:hover{background:#ecfdf5!important}
         .tbtn:hover{opacity:.8}
         input[type=number],input[type=text]{outline:none;-moz-appearance:textfield}
         input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       `}</style>
       <div style={{ maxWidth:920, margin:"0 auto", padding:"28px 24px 60px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
+        <div className="cm-stagger-1" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
           <span onClick={onBack} style={{ color:"#10b981", display:"flex", alignItems:"center", gap:4, cursor:"pointer" }}><BackIcon/> Selección de Muestras</span>
           <span style={{ color:"#d1d5db" }}>/</span>
           <span style={{ color:"#374151", fontWeight:600 }}>Conglomerados Monoetápico</span>
         </div>
-        <div style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
+        <div className="cm-stagger-1" style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
           <div style={{ width:52, height:52, borderRadius:14, background:"linear-gradient(135deg,#fff7ed,#ffedd5)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"#f97316" }}><UsersIcon/></div>
           <div>
             <h1 style={{ fontSize:23, fontWeight:800, margin:0, color:"#111827", letterSpacing:"-.02em" }}>Conglomerados Monoetápico</h1>
             <p style={{ fontSize:14, color:"#6b7280", margin:"4px 0 0", lineHeight:1.5 }}>Selección aleatoria de grupos completos · Todos los individuos del grupo seleccionado son incluidos</p>
           </div>
         </div>
-        <div style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
+        <div className="cm-stagger-2" style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
           <div style={{ background:"#10b981", borderRadius:7, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:"white", flexShrink:0 }}><SpkIcon/></div>
           <span><b>Asistente IA:</b> Usa este método cuando tengas grupos naturales (escuelas, barrios, consultorios) y no dispongas de un listado individual completo. Al seleccionar el grupo, incluyes a TODOS sus miembros. Considera el efecto de diseño (DEFF) al analizar los resultados.</span>
         </div>
-        <div style={{ marginBottom:20 }}>
+        <div className="cm-stagger-3" style={{ marginBottom:20 }}>
           <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".08em", color:"#6b7280", marginBottom:9 }}>Fuente de datos</div>
           <div style={{ display:"flex", gap:4, background:"#f3f4f6", borderRadius:12, padding:4 }}>
             {[
@@ -284,7 +292,7 @@ export default function ConglomeradosMonoetapico({ datosExcel = null, loadingExc
             ))}
           </div>
         </div>
-        <div style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 14px", boxShadow:"0 1px 4px rgba(0,0,0,.03)" }}>
+        <div className="cm-stagger-4" style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 14px", boxShadow:"0 4px 20px rgba(0,0,0,.04)" }}>
           {modo === "manual" && (
             <>
               <SLbl step="Paso 1" label="Define tus conglomerados"/>
@@ -399,8 +407,8 @@ export default function ConglomeradosMonoetapico({ datosExcel = null, loadingExc
           )}
         </div>
         {errMsg && <div style={{ background:"#fef2f2", border:"1.5px solid #fca5a5", borderRadius:11, padding:"11px 15px", marginTop:14, fontSize:13, color:"#dc2626", fontWeight:600 }}>⚠️ {errMsg}</div>}
-        <div style={{ display:"flex", gap:10, marginTop:16 }}>
-          <button onClick={handleCalc} disabled={!canCalc||loading} style={{ flex:1, padding:"13px 20px", borderRadius:12, border:"none", cursor:canCalc&&!loading?"pointer":"not-allowed", fontSize:15, fontWeight:700, fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:9, transition:"all .25s", background:canCalc?"linear-gradient(135deg,#10b981,#059669)":"#e5e7eb", color:canCalc?"white":"#9ca3af", boxShadow:canCalc?"0 4px 14px rgba(16,185,129,.3)":"none" }}>{loading?<><Spin/> Generando...</>:<><CalcIcon/> {res?"Regenerar muestra":"Generar muestra por conglomerados"}</>}</button>
+        <div className="cm-stagger-5" style={{ display:"flex", gap:10, marginTop:16 }}>
+          <button className={canCalc&&!loading?"cm-btn-cin":""} onClick={handleCalc} disabled={!canCalc||loading} style={{ flex:1, padding:"13px 20px", borderRadius:12, border:"none", cursor:canCalc&&!loading?"pointer":"not-allowed", fontSize:15, fontWeight:700, fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:9, transition:"all .25s", background:canCalc?"linear-gradient(135deg,#10b981,#059669)":"#e5e7eb", color:canCalc?"white":"#9ca3af", boxShadow:canCalc?"0 4px 14px rgba(16,185,129,.3)":"none" }}>{loading?<><Spin/> Generando...</>:<><CalcIcon/> {res?"Regenerar muestra":"Generar muestra por conglomerados"}</>}</button>
           <button onClick={handleReset} style={{ padding:"13px 18px", borderRadius:12, border:"2px solid #e5e7eb", cursor:"pointer", fontSize:14, fontWeight:600, fontFamily:"inherit", background:"white", color:"#6b7280", display:"flex", alignItems:"center", gap:6 }}><RstIcon/> Limpiar</button>
         </div>
         {err&&<div style={{ background:"#fef2f2", border:"1.5px solid #fca5a5", borderRadius:11, padding:"11px 15px", marginTop:14, fontSize:13, color:"#dc2626" }}>❌ {err}</div>}

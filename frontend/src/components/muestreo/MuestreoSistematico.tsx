@@ -164,6 +164,15 @@ export default function MuestreoSistematico({ datosExcel = null, loadingExcel = 
       <style>{`
         @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes cinematicFadeInUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .ms-stagger-1{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.04s}
+        .ms-stagger-2{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.08s}
+        .ms-stagger-3{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.12s}
+        .ms-stagger-4{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.16s}
+        .ms-stagger-5{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.20s}
+        .ms-stagger-6{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.24s}
+        .ms-btn-cin{transition:all .3s cubic-bezier(.16,1,.3,1)!important}
+        .ms-btn-cin:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 8px 20px rgba(16,185,129,.18)!important}
         .rh:hover{background:#ecfdf5!important}
         input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
         input[type=number]{-moz-appearance:textfield}
@@ -172,14 +181,14 @@ export default function MuestreoSistematico({ datosExcel = null, loadingExcel = 
       <div style={{ maxWidth:860, margin:"0 auto", padding:"28px 24px 60px" }}>
 
         {/* Breadcrumb */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
+        <div className="ms-stagger-1" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:22, fontSize:13, color:"#6b7280", fontWeight:500 }}>
           <span onClick={onBack} style={{ color:"#10b981", display:"flex", alignItems:"center", gap:4, cursor:"pointer" }}><BackIcon/> Selección de Muestras</span>
           <span style={{ color:"#d1d5db" }}>/</span>
           <span style={{ color:"#374151", fontWeight:600 }}>Muestreo Sistemático</span>
         </div>
 
         {/* Título */}
-        <div style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
+        <div className="ms-stagger-1" style={{ display:"flex", alignItems:"flex-start", gap:15, marginBottom:6 }}>
           <div style={{ width:48, height:48, borderRadius:14, background:"linear-gradient(135deg,#eff6ff,#dbeafe)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:22 }}>📋</div>
           <div>
             <h1 style={{ fontSize:23, fontWeight:800, margin:0, color:"#111827", letterSpacing:"-.02em" }}>Muestreo Sistemático</h1>
@@ -188,7 +197,7 @@ export default function MuestreoSistematico({ datosExcel = null, loadingExcel = 
         </div>
 
         {/* Banner IA */}
-        <div style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
+        <div className="ms-stagger-2" style={{ background:"linear-gradient(135deg,#ecfdf5,#f0fdf4)", border:"1px solid #a7f3d0", borderRadius:12, padding:"11px 15px", margin:"16px 0 24px", display:"flex", alignItems:"center", gap:10, fontSize:13, color:"#065f46" }}>
           <div style={{ background:"#10b981", borderRadius:7, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:"white", flexShrink:0 }}><SparkleIcon/></div>
           <span><b>Asistente IA:</b> Ideal para listados ordenados (historias clínicas, registros hospitalarios). El intervalo k = N/n se calcula automáticamente y el punto de inicio es aleatorio para garantizar representatividad.</span>
         </div>
@@ -214,7 +223,7 @@ export default function MuestreoSistematico({ datosExcel = null, loadingExcel = 
         )}
 
         {/* Formulario */}
-        <div style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 12px", boxShadow:"0 1px 4px rgba(0,0,0,.03)" }}>
+        <div className="ms-stagger-4" style={{ background:"white", borderRadius:16, border:"1.5px solid #e5e7eb", padding:"24px 24px 12px", boxShadow:"0 4px 20px rgba(0,0,0,.04)" }}>
           <SectionLabel step="Paso 1" label="Parámetros de la muestra"/>
 
           <div style={{ display:"grid", gridTemplateColumns: modo==="excel"&&datosExcel ? "1fr" : "1fr 1fr", gap:16 }}>
@@ -418,7 +427,7 @@ export function BotonesAccion({ canCalc, loading, labelCalc, onCalc, onReset }: 
   const Spinner = () => <span style={{ width:17, height:17, border:"3px solid rgba(255,255,255,.4)", borderTopColor:"white", borderRadius:"50%", animation:"spin .7s linear infinite", display:"inline-block" }}/>;
   return (
     <div style={{ display:"flex", gap:10, marginTop:16 }}>
-      <button onClick={onCalc} disabled={!canCalc||loading}
+      <button className={canCalc&&!loading?"ms-btn-cin":""} onClick={onCalc} disabled={!canCalc||loading}
         style={{ flex:1, padding:"13px 20px", borderRadius:12, border:"none", cursor:canCalc&&!loading?"pointer":"not-allowed", fontSize:15, fontWeight:700, fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:9, transition:"all .25s", background:canCalc?"linear-gradient(135deg,#10b981,#059669)":"#e5e7eb", color:canCalc?"white":"#9ca3af", boxShadow:canCalc?"0 4px 14px rgba(16,185,129,.3)":"none" }}
         onMouseDown={e=>{if(canCalc)e.currentTarget.style.transform="scale(0.98)"}} onMouseUp={e=>{e.currentTarget.style.transform="scale(1)"}}>
         {loading ? <><Spinner/> Generando...</> : <><CalcIcon/> {labelCalc}</>}

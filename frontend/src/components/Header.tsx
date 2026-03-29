@@ -27,6 +27,10 @@ export function Header({ currentView, isSidebarOpen, onToggleSidebar }: HeaderPr
     muestreo: {
       title: 'Muestreo',
       subtitle: 'Cálculo, selección, randomización y muestras complejas'
+    },
+    inferencia: {
+      title: 'Inferencia sobre parametros',
+      subtitle: 'Intervalos de confianza y contrastes de hipotesis'
     }
   };
 

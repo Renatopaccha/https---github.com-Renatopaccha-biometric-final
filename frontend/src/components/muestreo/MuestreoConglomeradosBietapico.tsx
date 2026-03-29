@@ -1,10 +1,70 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ReactNode, type CSSProperties } from "react";
+
+declare global {
+  interface Window {
+    XLSX?: any;
+  }
+}
+
+type ParamKey = "n" | "k" | "m";
+type ModoDatos = "manual" | "excel";
+type TipoDatos = "individual" | "agrupado";
+type ModoTamano = "igual" | "fraccion" | "definir";
+type MetodoSeleccion = "pps" | "aleatorio";
+type RowData = Record<string, any>;
+
+interface ConglomeradoManual {
+  nombre: string;
+  Mi: string;
+  mi: string;
+}
+
+interface ConglomeradoBase {
+  nombre: string;
+  Mi: number;
+  mi: number | null;
+}
+
+interface ConglomeradoActivo extends ConglomeradoBase {
+  filas?: RowData[];
+  esIndividual?: boolean;
+  esAgrupado?: boolean;
+  esManual?: boolean;
+}
+
+interface ResultadoConglomerado {
+  nombre: string;
+  Mi: number;
+  miSeleccionados: number;
+  filas: RowData[];
+  color: number;
+}
+
+interface ResultadoMuestra {
+  conglomerados: ResultadoConglomerado[];
+  completo: RowData[];
+  resumen: RowData[];
+  kSeleccionados: number;
+  nTotal: number;
+  mPorConglomerado: number;
+  totalConglomerados: number;
+  metodoSeleccion: MetodoSeleccion;
+  semillaUsada: number | null;
+  modoTamaño: ModoTamano;
+  valorFraccion: string;
+}
+
+interface ExportSheets {
+  completo: RowData[];
+  conglomerados: ResultadoConglomerado[];
+  resumen: RowData[];
+}
 
 /* ═══════════════════════════════════════════════════
    ALGORITMOS DE MUESTREO
    ═══════════════════════════════════════════════════ */
 
-function seleccionarIndicesAleatorios(total, k, semilla = null) {
+function seleccionarIndicesAleatorios(total: number, k: number, semilla: number | null = null): number[] {
   const indices = Array.from({ length: total }, (_, i) => i);
   if (semilla !== null) {
     let seed = semilla;
@@ -22,16 +82,16 @@ function seleccionarIndicesAleatorios(total, k, semilla = null) {
   return indices.slice(0, Math.min(k, total)).sort((a, b) => a - b);
 }
 
-function seleccionarPPS(conglomerados, k, semilla = null) {
+function seleccionarPPS(conglomerados: ConglomeradoActivo[], k: number, semilla: number | null = null): number[] {
   const totalMi = conglomerados.reduce((s, c) => s + c.Mi, 0);
   if (totalMi === 0) return [];
   let acumulado = 0;
-  const intervalos = conglomerados.map(c => {
+  const intervalos = conglomerados.map((c, idx) => {
     const inicio = acumulado;
     acumulado += c.Mi / totalMi;
-    return { inicio, fin: acumulado, idx: conglomerados.indexOf(c) };
+    return { inicio, fin: acumulado, idx };
   });
-  const seleccionados = new Set();
+  const seleccionados = new Set<number>();
   let seed = semilla;
   const random = () => {
     if (seed !== null) { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
@@ -48,7 +108,7 @@ function seleccionarPPS(conglomerados, k, semilla = null) {
   return Array.from(seleccionados).sort((a, b) => a - b);
 }
 
-function seleccionarElementos(filas, m, semilla = null) {
+function seleccionarElementos(filas: RowData[], m: number, semilla: number | null = null): RowData[] {
   if (!filas || filas.length === 0) return [];
   const indices = seleccionarIndicesAleatorios(filas.length, Math.min(m, filas.length), semilla);
   return indices.map(i => filas[i]);
@@ -59,7 +119,7 @@ function generarSemilla() { return Math.floor(Math.random() * 1000000); }
 /* ═══════════════════════════════════════════════════
    EXPORT EXCEL
    ═══════════════════════════════════════════════════ */
-async function exportarExcel(sheets, nombre) {
+async function exportarExcel(sheets: ExportSheets, nombre: string) {
   if (!window.XLSX) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
@@ -85,7 +145,7 @@ async function exportarExcel(sheets, nombre) {
 /* ═══════════════════════════════════════════════════
    ÍCONOS
    ═══════════════════════════════════════════════════ */
-const I = (d, w = 16) => <svg width={w} height={w} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
+const I = (d: ReactNode, w = 16) => <svg width={w} height={w} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
 const BackIcon = () => I(<><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></>, 15);
 const DownloadIcon = () => I(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>);
 const ResetIcon = () => I(<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></>, 15);
@@ -119,7 +179,7 @@ const COLORES = [
   { bg: "#FCE4EC", border: "#F48FB1", text: "#880E4F", dot: "#EC4899" },
   { bg: "#E8EAF6", border: "#9FA8DA", text: "#283593", dot: "#6366F1" },
 ];
-const colCong = (i) => COLORES[i % COLORES.length];
+const colCong = (i: number) => COLORES[i % COLORES.length];
 
 const PRIMARY = {
   main: "#2ECC71",
@@ -130,7 +190,7 @@ const PRIMARY = {
 };
 
 interface Props {
-  datosExcel?: any[] | null;
+  datosExcel?: RowData[] | null;
   loadingExcel?: boolean;
   onBack?: () => void;
 }
@@ -142,10 +202,10 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
   console.log("Rendering MuestreoConglomeradosBietapico", { datosExcel: datosExcel?.length, loadingExcel, onBack });
   const tieneExcel = datosExcel && datosExcel.length > 0;
 
-  const [modoDatos, setModoDatos] = useState(tieneExcel ? "excel" : "manual");
-  const [tipoDatos, setTipoDatos] = useState("individual");
+  const [modoDatos, setModoDatos] = useState<ModoDatos>(tieneExcel ? "excel" : "manual");
+  const [tipoDatos, setTipoDatos] = useState<TipoDatos>("individual");
 
-  const [conglomeradosMan, setCongMan] = useState([
+  const [conglomeradosMan, setCongMan] = useState<ConglomeradoManual[]>([
     { nombre: "Conglomerado 1", Mi: "", mi: "" },
     { nombre: "Conglomerado 2", Mi: "", mi: "" },
   ]);
@@ -155,21 +215,21 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
   const [colTamano, setColTamano] = useState("");
   const [colMuestra, setColMuestra] = useState("");
 
-  const [parametros, setParametros] = useState({ n: "", k: "", m: "" });
-  const [paramsSeleccionados, setParamsSel] = useState([]);
+  const [parametros, setParametros] = useState<Record<ParamKey, string>>({ n: "", k: "", m: "" });
+  const [paramsSeleccionados, setParamsSel] = useState<ParamKey[]>([]);
 
-  const [modoTamaño, setModoTamaño] = useState("igual");
+  const [modoTamaño, setModoTamaño] = useState<ModoTamano>("igual");
   const [valorFraccion, setValorFraccion] = useState("");
 
-  const [metodoSeleccion, setMetodoSel] = useState("pps");
+  const [metodoSeleccion, setMetodoSel] = useState<MetodoSeleccion>("pps");
 
   const [semilla, setSemilla] = useState("");
   const [usarSemilla, setUsarSemilla] = useState(false);
   const [ordenar, setOrdenar] = useState(false);
 
-  const [resultado, setResult] = useState(null);
+  const [resultado, setResult] = useState<ResultadoMuestra | null>(null);
   const [tabActivo, setTabActivo] = useState("combinada");
-  const [paginas, setPaginas] = useState({});
+  const [paginas, setPaginas] = useState<Record<string, number>>({});
   const [cargando, setLoad] = useState(false);
   const [descarga, setDesc] = useState(false);
   const [error, setError] = useState("");
@@ -178,11 +238,11 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
     if (tieneExcel) setModoDatos("excel");
   }, [tieneExcel]);
 
-  const columnasExcel = tieneExcel ? Object.keys(datosExcel[0]) : [];
+  const columnasExcel = tieneExcel ? Object.keys((datosExcel?.[0] ?? {}) as RowData) : [];
 
-  const conglomeradosIndividual = useMemo(() => {
+  const conglomeradosIndividual = useMemo<ConglomeradoActivo[]>(() => {
     if (!tieneExcel || !colConglomerado) return [];
-    const grupos = {};
+    const grupos: Record<string, RowData[]> = {};
     datosExcel.forEach((fila, idx) => {
       const val = String(fila[colConglomerado] ?? "Sin valor");
       if (!grupos[val]) grupos[val] = [];
@@ -192,17 +252,17 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
       .map(([nombre, filas]) => ({ nombre, Mi: filas.length, mi: null, filas, esIndividual: true }));
   }, [datosExcel, colConglomerado, tieneExcel]);
 
-  const conglomeradosAgrupado = useMemo(() => {
+  const conglomeradosAgrupado = useMemo<ConglomeradoActivo[]>(() => {
     if (!tieneExcel || !colNombre || !colTamano) return [];
     return datosExcel.map((fila, idx) => {
       const nombre = String(fila[colNombre] ?? `Fila ${idx + 1}`);
-      const Mi = parseFloat(fila[colTamano]);
-      const mi = colMuestra ? (parseFloat(fila[colMuestra]) || null) : null;
+      const Mi = parseFloat(String(fila[colTamano] ?? ""));
+      const mi = colMuestra ? (parseFloat(String(fila[colMuestra] ?? "")) || null) : null;
       return { nombre, Mi: isNaN(Mi) || Mi < 1 ? 0 : Math.floor(Mi), mi: mi && !isNaN(mi) && mi > 0 ? Math.floor(mi) : null, esAgrupado: true };
     }).filter(c => c.Mi > 0);
   }, [datosExcel, colNombre, colTamano, colMuestra, tieneExcel]);
 
-  const conglomeradosActivos = useMemo(() => {
+  const conglomeradosActivos = useMemo<ConglomeradoActivo[]>(() => {
     if (modoDatos === "manual") {
       return conglomeradosMan.filter(c => c.Mi && parseInt(c.Mi) > 0)
         .map((c, i) => ({ nombre: c.nombre || `Conglomerado ${i + 1}`, Mi: parseInt(c.Mi), mi: c.mi && parseInt(c.mi) > 0 ? parseInt(c.mi) : null, esManual: true }));
@@ -210,13 +270,13 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
     return tipoDatos === "individual" ? conglomeradosIndividual : conglomeradosAgrupado;
   }, [modoDatos, tipoDatos, conglomeradosMan, conglomeradosIndividual, conglomeradosAgrupado]);
 
-  const stats = useMemo(() => {
+  const stats = useMemo<{ totalElementos: number; totalCong: number; promedioMi: number } | null>(() => {
     if (conglomeradosActivos.length === 0) return null;
     const totalElementos = conglomeradosActivos.reduce((s, c) => s + c.Mi, 0);
     return { totalElementos, totalCong: conglomeradosActivos.length, promedioMi: totalElementos / conglomeradosActivos.length };
   }, [conglomeradosActivos]);
 
-  const parametroCalculado = useMemo(() => {
+  const parametroCalculado = useMemo<{ param: ParamKey; valor: number; formula: string } | null>(() => {
     if (paramsSeleccionados.length !== 2) return null;
     const [p1, p2] = paramsSeleccionados;
     const v1 = parseInt(parametros[p1]);
@@ -231,6 +291,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
   const errorMsg = useMemo(() => {
     if (conglomeradosActivos.length === 0 && modoDatos === "manual") return "";
     if (conglomeradosActivos.length === 0) return modoDatos === "excel" && tipoDatos === "individual" && !colConglomerado ? "" : modoDatos === "excel" && tipoDatos === "agrupado" && (!colNombre || !colTamano) ? "" : "No se detectaron conglomerados válidos.";
+    if (!stats) return "";
     if (paramsSeleccionados.length !== 2) return "Debes seleccionar exactamente 2 parámetros.";
     const [p1, p2] = paramsSeleccionados;
     const v1 = parseInt(parametros[p1]), v2 = parseInt(parametros[p2]);
@@ -250,19 +311,19 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
 
   const canCalc = conglomeradosActivos.length > 0 && paramsSeleccionados.length === 2 && !errorMsg;
 
-  function getParamLabel(p) { return { n: "Tamaño de muestra (n)", k: "Conglomerados (k)", m: "Elementos por conglomerado (m)" }[p]; }
+  function getParamLabel(p: ParamKey): string { return { n: "Tamaño de muestra (n)", k: "Conglomerados (k)", m: "Elementos por conglomerado (m)" }[p]; }
 
-  function toggleParam(p) {
+  function toggleParam(p: ParamKey) {
     if (paramsSeleccionados.includes(p)) setParamsSel(prev => prev.filter(x => x !== p));
     else if (paramsSeleccionados.length < 2) setParamsSel(prev => [...prev, p]);
     else setParamsSel([paramsSeleccionados[1], p]);
     setResult(null);
   }
 
-  function updateParam(p, val) { setParametros(prev => ({ ...prev, [p]: val })); setResult(null); }
+  function updateParam(p: ParamKey, val: string) { setParametros(prev => ({ ...prev, [p]: val })); setResult(null); }
   function addConglomerado() { setCongMan(prev => [...prev, { nombre: `Conglomerado ${prev.length + 1}`, Mi: "", mi: "" }]); }
-  function removeConglomerado(i) { if (conglomeradosMan.length <= 2) return; setCongMan(prev => prev.filter((_, idx) => idx !== i)); setResult(null); }
-  function updateConglomerado(i, campo, val) { setCongMan(prev => prev.map((c, idx) => idx === i ? { ...c, [campo]: val } : c)); setResult(null); }
+  function removeConglomerado(i: number) { if (conglomeradosMan.length <= 2) return; setCongMan(prev => prev.filter((_, idx) => idx !== i)); setResult(null); }
+  function updateConglomerado(i: number, campo: keyof ConglomeradoManual, val: string) { setCongMan(prev => prev.map((c, idx) => idx === i ? { ...c, [campo]: val } : c)); setResult(null); }
 
   function handleCalc() {
     if (!canCalc) return;
@@ -272,7 +333,8 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
     setTimeout(() => {
       try {
         const seed = usarSemilla && semilla ? parseInt(semilla) : null;
-        let kFinal, mFinal;
+        let kFinal = 0;
+        let mFinal = 0;
         if (paramsSeleccionados.includes("k") && paramsSeleccionados.includes("m")) { kFinal = parseInt(parametros.k); mFinal = parseInt(parametros.m); }
         else if (paramsSeleccionados.includes("k") && paramsSeleccionados.includes("n")) { kFinal = parseInt(parametros.k); mFinal = Math.ceil(parseInt(parametros.n) / kFinal); }
         else { mFinal = parseInt(parametros.m); kFinal = Math.ceil(parseInt(parametros.n) / mFinal); }
@@ -289,8 +351,8 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
           else mEste = c.mi || mFinal;
           const mUsar = Math.min(mEste, c.Mi);
 
-          let filasData;
-          if (c.esIndividual && c.filas) {
+          let filasData: RowData[];
+          if (Array.isArray(c.filas)) {
             const filasSeleccionadas = seleccionarElementos(c.filas, mUsar, seed ? seed + idx : null);
             filasData = filasSeleccionadas.map(f => { const { __idx, ...rest } = f; return rest; });
           } else {
@@ -299,7 +361,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
 
           if (ordenar && filasData.length > 0) {
             const col1 = Object.keys(filasData[0])[0];
-            filasData.sort((a, b) => { const va = parseFloat(a[col1]), vb = parseFloat(b[col1]); return isNaN(va) || isNaN(vb) ? String(a[col1]).localeCompare(String(b[col1])) : va - vb; });
+            filasData.sort((a, b) => { const va = parseFloat(String(a[col1] ?? "")), vb = parseFloat(String(b[col1] ?? "")); return isNaN(va) || isNaN(vb) ? String(a[col1]).localeCompare(String(b[col1])) : va - vb; });
           }
 
           const filasConMeta = filasData.map(fila => ({ "Orden": ordenGlobal++, "Conglomerado": c.nombre, ...fila }));
@@ -311,7 +373,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
 
         setResult({ conglomerados: conglomeradosResultado, completo: muestraCompleta, resumen, kSeleccionados: conglomeradosResultado.length, nTotal: muestraCompleta.length, mPorConglomerado: mFinal, totalConglomerados: conglomeradosActivos.length, metodoSeleccion, semillaUsada: seed, modoTamaño, valorFraccion });
         setTabActivo("combinada");
-      } catch (e) { setError("Error al generar la muestra: " + e.message); }
+      } catch (e) { setError("Error al generar la muestra: " + (e instanceof Error ? e.message : String(e))); }
       setLoad(false);
     }, 100);
   }
@@ -327,12 +389,24 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
     if (!resultado) return;
     setDesc(true);
     try { await exportarExcel({ completo: resultado.completo, conglomerados: resultado.conglomerados, resumen: resultado.resumen }, `muestra_bietapica_k${resultado.kSeleccionados}_n${resultado.nTotal}`); }
-    catch (e) { setError("No se pudo generar el archivo."); }
+    catch (_e) { setError("No se pudo generar el archivo."); }
     setDesc(false);
   }
 
-  function getPagTab(id) { return paginas[id] || 1; }
-  function setPagTab(id, p) { setPaginas(prev => ({ ...prev, [id]: p })); }
+  function getPagTab(id: string): number { return paginas[id] || 1; }
+  function setPagTab(id: string, p: number) { setPaginas(prev => ({ ...prev, [id]: p })); }
+
+  const paramOptions: Array<{ id: ParamKey; label: string; desc: string; placeholder: string }> = [
+    { id: "n", label: "Tamaño de muestra (n)", desc: "Total de elementos en la muestra", placeholder: "Ej: 200" },
+    { id: "k", label: "Conglomerados (k)", desc: "Número de conglomerados a seleccionar", placeholder: stats ? `1-${stats.totalCong - 1}` : "Ej: 5" },
+    { id: "m", label: "Elementos por conglomerado (m)", desc: "Elementos a seleccionar en cada uno", placeholder: "Ej: 15" },
+  ];
+
+  const modoTamanoOptions: Array<{ id: ModoTamano; icon: string; label: string; desc: string }> = [
+    { id: "igual", icon: "📏", label: "Muestra igual para todos", desc: "Todos los conglomerados: m elementos" },
+    { id: "fraccion", icon: "📊", label: "Fracción fija para todos", desc: "Proporción igual para todos" },
+    { id: "definir", icon: "✏️", label: "Definir tamaño de cada uno", desc: "Usar valores específicos (mi)" },
+  ];
 
   const datosTab = resultado ? (tabActivo === "combinada" ? resultado.completo : resultado.conglomerados.find(c => c.nombre === tabActivo)?.filas ?? []) : [];
   const esGrande = datosTab.length > PREVIEW_MAX;
@@ -349,6 +423,15 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
       <style>{`
         @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes cinematicFadeInUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .cb-stagger-1{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.04s}
+        .cb-stagger-2{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.08s}
+        .cb-stagger-3{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.12s}
+        .cb-stagger-4{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.16s}
+        .cb-stagger-5{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.20s}
+        .cb-stagger-6{animation:cinematicFadeInUp .7s cubic-bezier(.16,1,.3,1) both;animation-delay:.24s}
+        .cb-btn-cin{transition:all .3s cubic-bezier(.16,1,.3,1)!important}
+        .cb-btn-cin:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 8px 20px rgba(46,204,113,.18)!important}
         input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
         input[type=number]{-moz-appearance:textfield}
         .tab-cong:hover{background:#f9fafb}
@@ -357,14 +440,14 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 24px 60px" }}>
 
         {/* Breadcrumb */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 22, fontSize: 13, color: "#7F8C8D", fontWeight: 500 }}>
+        <div className="cb-stagger-1" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 22, fontSize: 13, color: "#7F8C8D", fontWeight: 500 }}>
           <span style={{ color: PRIMARY.main, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }} onClick={onBack}><BackIcon /> Selección de Muestras</span>
           <span style={{ color: "#d1d5db" }}>/</span>
           <span style={{ color: "#2C3E50", fontWeight: 600 }}>Muestreo por Conglomerados Bietápico</span>
         </div>
 
         {/* Título */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 15, marginBottom: 6 }}>
+        <div className="cb-stagger-1" style={{ display: "flex", alignItems: "flex-start", gap: 15, marginBottom: 6 }}>
           <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg,${PRIMARY.light},${PRIMARY.main}20)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: `2px solid ${PRIMARY.border}` }}><LayersIcon /></div>
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: 23, fontWeight: 800, margin: 0, color: "#2C3E50", letterSpacing: "-.02em" }}>Muestreo por Conglomerados Bietápico</h1>
@@ -374,13 +457,13 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
         </div>
 
         {/* Banner IA */}
-        <div style={{ background: `linear-gradient(135deg,${PRIMARY.light},#f0fdf4)`, border: `1px solid ${PRIMARY.border}`, borderRadius: 12, padding: "11px 15px", margin: "16px 0 24px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: PRIMARY.text }}>
+        <div className="cb-stagger-2" style={{ background: `linear-gradient(135deg,${PRIMARY.light},#f0fdf4)`, border: `1px solid ${PRIMARY.border}`, borderRadius: 12, padding: "11px 15px", margin: "16px 0 24px", display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: PRIMARY.text }}>
           <div style={{ background: PRIMARY.main, borderRadius: 7, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", color: "white", flexShrink: 0 }}><SparkleIcon /></div>
           <span><b>Asistente IA:</b> El muestreo bietápico reduce costos al estudiar solo una muestra dentro de cada conglomerado. Usa <b>PPS</b> para dar mayor probabilidad a conglomerados más grandes.</span>
         </div>
 
         {/* PASO 1: FUENTE DE DATOS */}
-        <div style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 1px 4px rgba(0,0,0,.03)", marginBottom: 16 }}>
+        <div className="cb-stagger-3" style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 4px 20px rgba(0,0,0,.04)", marginBottom: 16 }}>
           <SLabel step="Paso 1" label="Fuente de datos" />
 
           <div style={{ display: "flex", gap: 4, background: "#f3f4f6", borderRadius: 12, padding: 4, marginBottom: 18 }}>
@@ -466,7 +549,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
         </div>
 
         {/* PASO 2: PARÁMETROS (2 de 3) */}
-        <div style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 1px 4px rgba(0,0,0,.03)", marginBottom: 16 }}>
+        <div className="cb-stagger-4" style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 4px 20px rgba(0,0,0,.04)", marginBottom: 16 }}>
           <SLabel step="Paso 2" label="Parámetros de muestreo (elige 2)" />
           <p style={{ fontSize: 13, color: "#7F8C8D", margin: "0 0 14px" }}>Selecciona <b>exactamente 2 parámetros</b>. El tercero se calculará automáticamente.</p>
 
@@ -479,11 +562,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
           </div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            {[
-              { id: "n", label: "Tamaño de muestra (n)", desc: "Total de elementos en la muestra", placeholder: "Ej: 200" },
-              { id: "k", label: "Conglomerados (k)", desc: "Número de conglomerados a seleccionar", placeholder: stats ? `1-${stats.totalCong - 1}` : "Ej: 5" },
-              { id: "m", label: "Elementos por conglomerado (m)", desc: "Elementos a seleccionar en cada uno", placeholder: "Ej: 15" },
-            ].map(p => {
+            {paramOptions.map(p => {
               const isSelected = paramsSeleccionados.includes(p.id);
               const isCalculated = parametroCalculado?.param === p.id;
               return (
@@ -502,15 +581,11 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
         </div>
 
         {/* PASO 3: TAMAÑO DE MUESTRA POR CONGLOMERADO */}
-        <div style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 1px 4px rgba(0,0,0,.03)", marginBottom: 16 }}>
+        <div className="cb-stagger-5" style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 4px 20px rgba(0,0,0,.04)", marginBottom: 16 }}>
           <SLabel step="Paso 3" label="Tamaño de muestra por conglomerado" />
           
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
-            {[
-              { id: "igual", icon: "📏", label: "Muestra igual para todos", desc: "Todos los conglomerados: m elementos" },
-              { id: "fraccion", icon: "📊", label: "Fracción fija para todos", desc: "Proporción igual para todos" },
-              { id: "definir", icon: "✏️", label: "Definir tamaño de cada uno", desc: "Usar valores específicos (mi)" },
-            ].map(opt => (
+            {modoTamanoOptions.map(opt => (
               <div key={opt.id} onClick={() => { setModoTamaño(opt.id); setResult(null); }} style={{ padding: "14px", borderRadius: 12, cursor: "pointer", border: modoTamaño === opt.id ? `2px solid ${PRIMARY.main}` : "2px solid #e5e7eb", background: modoTamaño === opt.id ? PRIMARY.light : "white", transition: "all .2s" }}>
                 <div style={{ fontSize: 22, marginBottom: 8 }}>{opt.icon}</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: modoTamaño === opt.id ? PRIMARY.text : "#374151", marginBottom: 4 }}>{opt.label}</div>
@@ -540,7 +615,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
         </div>
 
         {/* PASO 4: MÉTODO Y OPCIONES */}
-        <div style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 1px 4px rgba(0,0,0,.03)", marginBottom: 16 }}>
+        <div className="cb-stagger-6" style={{ background: "white", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "22px 24px 18px", boxShadow: "0 4px 20px rgba(0,0,0,.04)", marginBottom: 16 }}>
           <SLabel step="Paso 4" label="Método de selección y opciones" />
 
           <div style={{ marginBottom: 14 }}>
@@ -583,7 +658,7 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
 
         {/* Botones */}
         <div style={{ display: "flex", gap: 10, marginBottom: resultado ? 24 : 0 }}>
-          <button onClick={handleCalc} disabled={!canCalc || cargando} style={{ flex: 1, padding: "13px 20px", borderRadius: 12, border: "none", cursor: canCalc && !cargando ? "pointer" : "not-allowed", fontSize: 15, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, transition: "all .25s", background: canCalc ? `linear-gradient(135deg,${PRIMARY.main},${PRIMARY.dark})` : "#e5e7eb", color: canCalc ? "white" : "#9ca3af", boxShadow: canCalc ? `0 4px 14px rgba(46,204,113,.3)` : "none" }}>
+          <button className={canCalc&&!cargando?"cb-btn-cin":""} onClick={handleCalc} disabled={!canCalc || cargando} style={{ flex: 1, padding: "13px 20px", borderRadius: 12, border: "none", cursor: canCalc && !cargando ? "pointer" : "not-allowed", fontSize: 15, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, transition: "all .25s", background: canCalc ? `linear-gradient(135deg,${PRIMARY.main},${PRIMARY.dark})` : "#e5e7eb", color: canCalc ? "white" : "#9ca3af", boxShadow: canCalc ? `0 4px 14px rgba(46,204,113,.3)` : "none" }}>
             {cargando ? <><SpinIcon />Generando...</> : <><CalcIcon />{resultado ? "Regenerar muestra" : "Generar muestra bietápica"}</>}
           </button>
           <button onClick={handleReset} style={{ padding: "13px 18px", borderRadius: 12, border: "2px solid #e5e7eb", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "inherit", background: "white", color: "#7F8C8D", display: "flex", alignItems: "center", gap: 6 }}><ResetIcon /> Limpiar</button>
@@ -672,24 +747,24 @@ export default function MuestreoConglomeradosBietapico({ datosExcel = null, load
 /* ═══════════════════════════════════════════════════
    SUB-COMPONENTES
    ═══════════════════════════════════════════════════ */
-function SLabel({ step, label }) { return <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", color: "#2ECC71", marginBottom: 14, display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 16, height: 2, background: "#2ECC71", borderRadius: 2 }} />{step} · {label}</div>; }
+function SLabel({ step, label }: { step: string; label: string }) { return <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", color: "#2ECC71", marginBottom: 14, display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 16, height: 2, background: "#2ECC71", borderRadius: 2 }} />{step} · {label}</div>; }
 
-const inputStyle = { border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", color: "#111827" };
-const selectStyle = { width: "100%", padding: "11px 36px 11px 14px", border: "2px solid #e5e7eb", borderRadius: 10, fontSize: 14, fontFamily: "inherit", appearance: "none", outline: "none", cursor: "pointer", background: "white", color: "#111827" };
+const inputStyle: CSSProperties = { border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", color: "#111827" };
+const selectStyle: CSSProperties = { width: "100%", padding: "11px 36px 11px 14px", border: "2px solid #e5e7eb", borderRadius: 10, fontSize: 14, fontFamily: "inherit", appearance: "none", outline: "none", cursor: "pointer", background: "white", color: "#111827" };
 
-function modoBtnStyle(isActive, PRIMARY, disabled = false) { return { flex: 1, padding: "12px 16px", border: "none", borderRadius: 9, cursor: disabled ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s", background: isActive ? "white" : "transparent", color: disabled ? "#d1d5db" : isActive ? "#111827" : "#6b7280", boxShadow: isActive ? "0 1px 3px rgba(0,0,0,.08)" : "none", opacity: disabled ? 0.6 : 1 }; }
-function tipoBtnStyle(isActive, PRIMARY) { return { padding: "14px 16px", borderRadius: 12, cursor: "pointer", border: isActive ? `2px solid ${PRIMARY.main}` : "2px solid #e5e7eb", background: isActive ? PRIMARY.light : "white", transition: "all .2s", textAlign: "left" }; }
-function metodoBtnStyle(isActive, PRIMARY) { return { padding: "14px", borderRadius: 12, cursor: "pointer", border: isActive ? `2px solid ${PRIMARY.main}` : "2px solid #e5e7eb", background: isActive ? PRIMARY.light : "white", transition: "all .2s", textAlign: "center" }; }
-function badgeStyle(bg, color) { return { marginLeft: "auto", background: bg, color, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }; }
-function tabStyle(isActive, col, PRIMARY) { return { padding: "9px 16px", border: "none", borderRadius: "9px 9px 0 0", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap", transition: "all .2s", background: isActive ? "white" : "transparent", color: isActive && col ? col.text : isActive ? PRIMARY.text : "#6b7280", boxShadow: isActive ? "0 -1px 0 white" : undefined }; }
+function modoBtnStyle(isActive: boolean, _primary: typeof PRIMARY, disabled = false): CSSProperties { return { flex: 1, padding: "12px 16px", border: "none", borderRadius: 9, cursor: disabled ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s", background: isActive ? "white" : "transparent", color: disabled ? "#d1d5db" : isActive ? "#111827" : "#6b7280", boxShadow: isActive ? "0 1px 3px rgba(0,0,0,.08)" : "none", opacity: disabled ? 0.6 : 1 }; }
+function tipoBtnStyle(isActive: boolean, primary: typeof PRIMARY): CSSProperties { return { padding: "14px 16px", borderRadius: 12, cursor: "pointer", border: isActive ? `2px solid ${primary.main}` : "2px solid #e5e7eb", background: isActive ? primary.light : "white", transition: "all .2s", textAlign: "left" }; }
+function metodoBtnStyle(isActive: boolean, primary: typeof PRIMARY): CSSProperties { return { padding: "14px", borderRadius: 12, cursor: "pointer", border: isActive ? `2px solid ${primary.main}` : "2px solid #e5e7eb", background: isActive ? primary.light : "white", transition: "all .2s", textAlign: "center" }; }
+function badgeStyle(bg: string, color: string): CSSProperties { return { marginLeft: "auto", background: bg, color, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }; }
+function tabStyle(isActive: boolean, col: (typeof COLORES)[number] | null, primary: typeof PRIMARY): CSSProperties { return { padding: "9px 16px", border: "none", borderRadius: "9px 9px 0 0", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap", transition: "all .2s", background: isActive ? "white" : "transparent", color: isActive && col ? col.text : isActive ? primary.text : "#6b7280", boxShadow: isActive ? "0 -1px 0 white" : undefined }; }
 
-function PaginacionComp({ pagina, totalPags, setPagina, vistaData }) {
-  function getPags(cur, tot) { if (tot <= 7) return Array.from({ length: tot }, (_, i) => i + 1); if (cur <= 4) return [1, 2, 3, 4, 5, "…", tot]; if (cur >= tot - 3) return [1, "…", tot - 4, tot - 3, tot - 2, tot - 1, tot]; return [1, "…", cur - 1, cur, cur + 1, "…", tot]; }
+function PaginacionComp({ pagina, totalPags, setPagina, vistaData }: { pagina: number; totalPags: number; setPagina: (p: number) => void; vistaData: RowData[] }) {
+  function getPags(cur: number, tot: number): Array<number | string> { if (tot <= 7) return Array.from({ length: tot }, (_, i) => i + 1); if (cur <= 4) return [1, 2, 3, 4, 5, "…", tot]; if (cur >= tot - 3) return [1, "…", tot - 4, tot - 3, tot - 2, tot - 1, tot]; return [1, "…", cur - 1, cur, cur + 1, "…", tot]; }
   return (
     <div style={{ padding: "14px 20px", borderTop: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
       <span style={{ fontSize: 12, color: "#9ca3af" }}>Filas {((pagina - 1) * FILAS_PAG + 1)}–{Math.min(pagina * FILAS_PAG, vistaData.length)} de {vistaData.length.toLocaleString()}</span>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{getPags(pagina, totalPags).map((p, i) => p === "…" ? <span key={`e${i}`} style={{ padding: "0 6px", color: "#9ca3af", fontSize: 13 }}>…</span> : <button key={p} onClick={() => setPagina(p)} style={{ width: 32, height: 32, border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", background: pagina === p ? "#2ECC71" : "#f3f4f6", color: pagina === p ? "white" : "#6b7280" }}>{p}</button>)}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#7F8C8D" }}>Ir a pág. <input type="number" min={1} max={totalPags} placeholder={String(pagina)} onKeyDown={e => { if (e.key === "Enter") { const v = parseInt(e.target.value); if (v >= 1 && v <= totalPags) { setPagina(v); e.target.value = ""; } } }} style={{ width: 50, padding: "5px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none", textAlign: "center" }} /></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{getPags(pagina, totalPags).map((p, i) => typeof p === "string" ? <span key={`e${i}`} style={{ padding: "0 6px", color: "#9ca3af", fontSize: 13 }}>…</span> : <button key={p} onClick={() => setPagina(p)} style={{ width: 32, height: 32, border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", background: pagina === p ? "#2ECC71" : "#f3f4f6", color: pagina === p ? "white" : "#6b7280" }}>{p}</button>)}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#7F8C8D" }}>Ir a pág. <input type="number" min={1} max={totalPags} placeholder={String(pagina)} onKeyDown={e => { if (e.key === "Enter") { const input = e.target as HTMLInputElement; const v = parseInt(input.value); if (v >= 1 && v <= totalPags) { setPagina(v); input.value = ""; } } }} style={{ width: 50, padding: "5px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none", textAlign: "center" }} /></div>
     </div>
   );
 }

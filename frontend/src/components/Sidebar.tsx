@@ -4,7 +4,7 @@ interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   activeView: string;
-  onNavigate: (view: 'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente' | 'muestreo') => void;
+  onNavigate: (view: 'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente' | 'muestreo' | 'inferencia') => void;
 }
 
 const navigationItems = [
@@ -13,7 +13,7 @@ const navigationItems = [
   { name: 'Estadística Descriptiva', icon: BarChart3, view: 'estadistica' as const },
   { name: 'Asistente IA', icon: Sparkles, view: 'asistente' as const },
   { name: 'Muestreo', icon: Target, view: 'muestreo' as const },
-  { name: 'Pruebas de Hipótesis', icon: FlaskConical, view: null },
+  { name: 'Inferencia sobre parametros', icon: FlaskConical, view: 'inferencia' as const },
   { name: 'Configuración', icon: Settings, view: null },
 ];
 
