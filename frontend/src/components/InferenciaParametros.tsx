@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import UnaPoblacion from './inferencia/UnaPoblacion';
+import DosPoblaciones from './inferencia/DosPoblaciones';
 import InferenciaMedia from './inferencia/InferenciaMedia';
 import InferenciaProporcion from './inferencia/InferenciaProporcion';
 import InferenciaPearson from './inferencia/InferenciaPearson';
 import InferenciaPercentil from './inferencia/InferenciaPercentil';
 import InferenciaTasaIncidencia from './inferencia/InferenciaTasaIncidencia';
 import InferenciaIndicePosicion from './inferencia/InferenciaIndicePosicion';
+import InferenciaMediasIndep from './inferencia/InferenciaMediasIndep';
 import { useDataContext } from '../context/DataContext';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
@@ -73,11 +75,12 @@ const cards = [
 
 interface InferenciaParametrosProps {
   onNavigate?: (view: string, chatId?: string) => void;
+  resetSignal?: number;
 }
 
-export function InferenciaParametros({ onNavigate }: InferenciaParametrosProps) {
+export function InferenciaParametros({ onNavigate, resetSignal = 0 }: InferenciaParametrosProps) {
   const [activeCard, setActiveCard] = useState('una-poblacion');
-  const [subView, setSubView] = useState<'hub' | 'una-poblacion' | 'media' | 'proporcion' | 'correlacion' | 'percentiles' | 'tasa-incidencia' | 'indice-posicion'>('hub');
+  const [subView, setSubView] = useState<'hub' | 'una-poblacion' | 'dos-poblaciones' | 'media' | 'proporcion' | 'correlacion' | 'percentiles' | 'tasa-incidencia' | 'indice-posicion' | 'medias-independientes'>('hub');
   const { sessionId } = useDataContext();
   const [allExcelData, setAllExcelData] = useState<any[] | null>(null);
   const [loadingExcel, setLoadingExcel] = useState(false);
@@ -129,7 +132,7 @@ export function InferenciaParametros({ onNavigate }: InferenciaParametrosProps) 
   }, [sessionId]);
 
   useEffect(() => {
-    if ((subView === 'media' || subView === 'proporcion' || subView === 'correlacion' || subView === 'percentiles' || subView === 'tasa-incidencia' || subView === 'indice-posicion') && sessionId && !allExcelData) {
+    if ((subView === 'media' || subView === 'proporcion' || subView === 'correlacion' || subView === 'percentiles' || subView === 'tasa-incidencia' || subView === 'indice-posicion' || subView === 'medias-independientes') && sessionId && !allExcelData) {
       fetchAllData();
     }
   }, [subView, sessionId, allExcelData, fetchAllData]);
@@ -139,6 +142,11 @@ export function InferenciaParametros({ onNavigate }: InferenciaParametrosProps) 
       setAllExcelData(null);
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    setSubView('hub');
+    setActiveCard('una-poblacion');
+  }, [resetSignal]);
 
   if (subView === 'una-poblacion') {
     return (
@@ -159,6 +167,31 @@ export function InferenciaParametros({ onNavigate }: InferenciaParametrosProps) 
             setSubView('indice-posicion');
           }
         }}
+      />
+    );
+  }
+
+  if (subView === 'dos-poblaciones') {
+    return (
+      <DosPoblaciones
+        onBack={() => setSubView('hub')}
+        onContinuarChat={() => onNavigate?.('asistente')}
+        onSelect={(methodId) => {
+          if (methodId === 'medias-ind') {
+            setSubView('medias-independientes');
+          }
+        }}
+      />
+    );
+  }
+
+  if (subView === 'medias-independientes') {
+    return (
+      <InferenciaMediasIndep
+        onBack={() => setSubView('dos-poblaciones')}
+        datosExcel={allExcelData}
+        loadingExcel={loadingExcel}
+        onContinuarChat={() => onNavigate?.('asistente')}
       />
     );
   }
@@ -240,143 +273,154 @@ export function InferenciaParametros({ onNavigate }: InferenciaParametrosProps) 
     >
       <div
         style={{
-          padding: '32px 40px 20px 40px',
+          padding: '32px clamp(20px, 4vw, 40px) 20px',
           background: '#fff',
           borderBottom: '1px solid #e8eaed',
           animation: 'inferenciaFadeUp 0.45s ease-out both',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
+        <div style={{ maxWidth: '920px', width: '100%', margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '4px',
+                height: '30px',
+                borderRadius: '4px',
+                background: teal[600],
+                flexShrink: 0,
+              }}
+            />
+            <h1
+              style={{
+                fontSize: '26px',
+                fontWeight: '700',
+                color: '#1a1f2e',
+                margin: 0,
+              }}
+            >
+              Inferencia sobre parametros
+            </h1>
+          </div>
+          <p
             style={{
-              width: '4px',
-              height: '30px',
-              borderRadius: '4px',
-              background: teal[600],
-              flexShrink: 0,
-            }}
-          />
-          <h1
-            style={{
-              fontSize: '26px',
-              fontWeight: '700',
-              color: '#1a1f2e',
-              margin: 0,
+              color: '#6b7280',
+              fontSize: '14px',
+              marginTop: '6px',
+              marginLeft: '14px',
+              marginBottom: 0,
             }}
           >
-            Inferencia sobre parametros
-          </h1>
+            Seleccione el tipo de inferencia estadistica que desea realizar
+          </p>
         </div>
-        <p
-          style={{
-            color: '#6b7280',
-            fontSize: '14px',
-            marginTop: '6px',
-            marginLeft: '14px',
-            marginBottom: 0,
-          }}
-        >
-          Seleccione el tipo de inferencia estadistica que desea realizar
-        </p>
       </div>
 
       <div
         style={{
-          padding: '32px 40px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-          maxWidth: '920px',
-          animation: 'inferenciaFadeUp 0.45s ease-out both',
+          padding: '32px clamp(20px, 4vw, 40px)',
         }}
       >
-        {cards.map((card, index) => {
-          const isActive = activeCard === card.id;
-          return (
-            <button
-              key={card.id}
-              type="button"
-              onClick={() => {
-                setActiveCard(card.id);
-                if (card.id === 'una-poblacion') {
-                  setSubView('una-poblacion');
-                }
-              }}
-              style={{
-                background: '#fff',
-                border: isActive ? `2px solid ${teal[600]}` : '1.5px solid #e5e7eb',
-                borderRadius: '14px',
-                padding: '28px',
-                cursor: 'pointer',
-                transition: 'box-shadow 0.18s, border-color 0.18s, transform 0.12s',
-                boxShadow: isActive ? '0 4px 18px rgba(13,148,136,0.12)' : '0 1px 3px rgba(0,0,0,0.05)',
-                transform: isActive ? 'translateY(-1px)' : 'none',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-                textAlign: 'left',
-                animation: `inferenciaFadeUp 0.45s ease-out ${index * 80}ms both`,
-              }}
-            >
-              <div
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '20px',
+            maxWidth: '920px',
+            width: '100%',
+            margin: '0 auto',
+            animation: 'inferenciaFadeUp 0.45s ease-out both',
+          }}
+        >
+          {cards.map((card, index) => {
+            const isActive = activeCard === card.id;
+            return (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => {
+                  setActiveCard(card.id);
+                  if (card.id === 'una-poblacion') {
+                    setSubView('una-poblacion');
+                  } else if (card.id === 'dos-poblaciones') {
+                    setSubView('dos-poblaciones');
+                  }
+                }}
                 style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '12px',
-                  background: isActive ? teal[100] : teal[50],
+                  background: '#fff',
+                  border: isActive ? `2px solid ${teal[600]}` : '1.5px solid #e5e7eb',
+                  borderRadius: '14px',
+                  padding: '28px',
+                  cursor: 'pointer',
+                  transition: 'box-shadow 0.18s, border-color 0.18s, transform 0.12s',
+                  boxShadow: isActive ? '0 4px 18px rgba(13,148,136,0.12)' : '0 1px 3px rgba(0,0,0,0.05)',
+                  transform: isActive ? 'translateY(-1px)' : 'none',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: teal[600],
+                  flexDirection: 'column',
+                  gap: '14px',
+                  textAlign: 'left',
+                  animation: `inferenciaFadeUp 0.45s ease-out ${index * 80}ms both`,
                 }}
               >
-                {card.icon}
-              </div>
-
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: '15.5px',
-                  fontWeight: '600',
-                  color: isActive ? teal[700] : '#1a1f2e',
-                }}
-              >
-                {card.title}
-              </h3>
-
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '13.5px',
-                  color: '#6b7280',
-                  lineHeight: '1.65',
-                  flexGrow: 1,
-                }}
-              >
-                {card.description}
-              </p>
-
-              {isActive && (
                 <div
                   style={{
+                    width: '50px',
+                    height: '50px',
+                    borderRadius: '12px',
+                    background: isActive ? teal[100] : teal[50],
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
+                    justifyContent: 'center',
                     color: teal[600],
-                    fontSize: '13.5px',
-                    fontWeight: '500',
-                    marginTop: '2px',
                   }}
                 >
-                  Abrir herramienta
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  {card.icon}
                 </div>
-              )}
-            </button>
-          );
-        })}
+
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: '15.5px',
+                    fontWeight: '600',
+                    color: isActive ? teal[700] : '#1a1f2e',
+                  }}
+                >
+                  {card.title}
+                </h3>
+
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: '13.5px',
+                    color: '#6b7280',
+                    lineHeight: '1.65',
+                    flexGrow: 1,
+                  }}
+                >
+                  {card.description}
+                </p>
+
+                {isActive && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: teal[600],
+                      fontSize: '13.5px',
+                      fontWeight: '500',
+                      marginTop: '2px',
+                    }}
+                  >
+                    Abrir herramienta
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <style>{`

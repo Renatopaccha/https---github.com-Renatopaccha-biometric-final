@@ -173,18 +173,27 @@ export default function UnaPoblacion({ onSelect, onBack }: UnaPoblacionProps) {
       >
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => onBack?.()}
           style={{
-            fontSize: '12px',
-            color: '#9ca3af',
-            margin: '0 0 10px 14px',
+            fontSize: '13px',
+            color: '#0d9488',
+            fontWeight: 600,
+            margin: '0 0 12px',
             background: 'transparent',
             border: 'none',
             padding: 0,
-            cursor: 'pointer',
+            cursor: onBack ? 'pointer' : 'default',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
+          aria-label="Volver a inferencia sobre parametros"
         >
-          Inferencia sobre parametros {'>'} Una poblacion
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5" />
+            <path d="M12 19l-7-7 7-7" />
+          </svg>
+          Inferencia sobre parametros
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

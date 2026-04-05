@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DescriptiveStatsHub } from './stats/DescriptiveStatsHub';
 import { TablaResumenView } from './stats/TablaResumenView';
 import { TablasFrecuenciaView } from './stats/TablasFrecuenciaView';
@@ -9,8 +9,12 @@ import ErrorBoundary from './ErrorBoundary';
 
 export type StatsView = 'hub' | 'tabla-resumen' | 'frecuencia' | 'contingencia' | 'correlaciones' | 'tabla-inteligente';
 
-export function DescriptiveStats({ onNavigate }: { onNavigate?: (view: any, chatId?: string) => void }) {
+export function DescriptiveStats({ onNavigate, resetSignal = 0 }: { onNavigate?: (view: any, chatId?: string) => void; resetSignal?: number }) {
   const [currentView, setCurrentView] = useState<StatsView>('hub');
+
+  useEffect(() => {
+    setCurrentView('hub');
+  }, [resetSignal]);
 
   const renderView = () => {
     switch (currentView) {

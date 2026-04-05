@@ -13,6 +13,11 @@ const InferenciaParametros = lazy(() => import('./components/InferenciaParametro
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [sectionResetSignal, setSectionResetSignal] = useState({
+    estadistica: 0,
+    muestreo: 0,
+    inferencia: 0,
+  });
 
   const [currentView, setCurrentView] = useState<'inicio' | 'preprocesamiento' | 'estadistica' | 'asistente' | 'muestreo' | 'inferencia'>('inicio');
   const [selectedChatId, setSelectedChatId] = useState<string | undefined>(undefined);
@@ -24,6 +29,14 @@ export default function App() {
       // Clear selected chat when navigating away from assistant
       setSelectedChatId(undefined);
     }
+
+    if (view === 'estadistica' || view === 'muestreo' || view === 'inferencia') {
+      setSectionResetSignal((prev) => ({
+        ...prev,
+        [view]: prev[view] + 1,
+      }));
+    }
+
     setCurrentView(view as any);
   };
 
@@ -55,10 +68,25 @@ export default function App() {
             </div>
           }>
             {currentView === 'preprocesamiento' && <DataPreprocessing />}
-            {currentView === 'estadistica' && <DescriptiveStats onNavigate={handleNavigation} />}
+            {currentView === 'estadistica' && (
+              <DescriptiveStats
+                onNavigate={handleNavigation}
+                resetSignal={sectionResetSignal.estadistica}
+              />
+            )}
             {currentView === 'asistente' && <AIAssistant initialChatId={selectedChatId} />}
-            {currentView === 'muestreo' && <Muestreo onNavigate={handleNavigation} />}
-            {currentView === 'inferencia' && <InferenciaParametros onNavigate={handleNavigation} />}
+            {currentView === 'muestreo' && (
+              <Muestreo
+                onNavigate={handleNavigation}
+                resetSignal={sectionResetSignal.muestreo}
+              />
+            )}
+            {currentView === 'inferencia' && (
+              <InferenciaParametros
+                onNavigate={handleNavigation}
+                resetSignal={sectionResetSignal.inferencia}
+              />
+            )}
           </Suspense>
         </main>
       </div>

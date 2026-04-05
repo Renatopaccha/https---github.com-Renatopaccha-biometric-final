@@ -61,11 +61,12 @@ export type MuestreoView =
 
 interface MuestreoProps {
   onNavigate?: (view: string, chatId?: string) => void;
+  resetSignal?: number;
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
 
-export function Muestreo({ onNavigate }: MuestreoProps) {
+export function Muestreo({ onNavigate, resetSignal = 0 }: MuestreoProps) {
   const [currentView, setCurrentView] = useState<MuestreoView>('hub');
   const { sessionId, data, totalRows } = useDataContext();
 
@@ -192,6 +193,10 @@ export function Muestreo({ onNavigate }: MuestreoProps) {
       fetchAllData();
     }
   }, [currentView, sessionId, allExcelData, fetchAllData]);
+
+  useEffect(() => {
+    setCurrentView('hub');
+  }, [resetSignal]);
 
   const handleSelectItem = (_category: string, item: string) => {
     if (item === 'Media') {
