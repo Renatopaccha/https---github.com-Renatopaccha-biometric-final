@@ -186,18 +186,44 @@ function calcMediasIndependientes(
   m2: number, sd2: number, n2: number,
   nc: number,
   calcBil: boolean, calcUIzq: boolean, calcUDer: boolean, calcIC: boolean,
-  varLabel: string, groupLabel: string, g1: string, g2: string
+  varLabel: string, groupLabel: string, g1: string, g2: string,
+  rawArr1?: number[], rawArr2?: number[]
 ): ResultadosMedias {
   const alpha = (100 - nc) / 100;
   const diff = m1 - m2;
   const v1 = sd1 * sd1;
   const v2 = sd2 * sd2;
 
-  // F-Test for Equality of Variances
-  const f_stat = Math.max(v1, v2) / Math.min(v1, v2);
-  const f_df1 = v1 > v2 ? n1 - 1 : n2 - 1;
-  const f_df2 = v1 > v2 ? n2 - 1 : n1 - 1;
-  const f_p = 2 * (1 - fcdf(f_stat, f_df1, f_df2));
+  // Levene's W Test for Equality of Variances
+  const N = n1 + n2;
+  const f_df1 = 1;       // k - 1  (2 groups)
+  const f_df2 = N - 2;   // N - k
+  let f_stat: number;
+
+  if (rawArr1 && rawArr2 && rawArr1.length >= 2 && rawArr2.length >= 2) {
+    // Exact Levene from raw data
+    const mean1 = rawArr1.reduce((a, b) => a + b, 0) / rawArr1.length;
+    const mean2 = rawArr2.reduce((a, b) => a + b, 0) / rawArr2.length;
+    const z1 = rawArr1.map(x => Math.abs(x - mean1));
+    const z2 = rawArr2.map(x => Math.abs(x - mean2));
+    const zbar1 = z1.reduce((a, b) => a + b, 0) / n1;
+    const zbar2 = z2.reduce((a, b) => a + b, 0) / n2;
+    const zbar = (n1 * zbar1 + n2 * zbar2) / N;
+    const between = n1 * (zbar1 - zbar) ** 2 + n2 * (zbar2 - zbar) ** 2;
+    const within = z1.reduce((a, x) => a + (x - zbar1) ** 2, 0) + z2.reduce((a, x) => a + (x - zbar2) ** 2, 0);
+    f_stat = (f_df2 * between) / (f_df1 * within);
+  } else {
+    // Approximation from summary stats (assuming normality)
+    const c = Math.sqrt(2 / Math.PI);
+    const zbar1 = sd1 * c;
+    const zbar2 = sd2 * c;
+    const zbar = (n1 * zbar1 + n2 * zbar2) / N;
+    const between = n1 * (zbar1 - zbar) ** 2 + n2 * (zbar2 - zbar) ** 2;
+    const varZ = 1 - 2 / Math.PI;
+    const within = (n1 - 1) * v1 * varZ + (n2 - 1) * v2 * varZ;
+    f_stat = (f_df2 * between) / (f_df1 * within);
+  }
+  const f_p = 1 - fcdf(f_stat, f_df1, f_df2);
 
   // T-Test Equal Variances
   const sp2 = ((n1 - 1) * v1 + (n2 - 1) * v2) / (n1 + n2 - 2);
@@ -249,7 +275,7 @@ function buildResumenIA(res: ResultadosMedias): string {
   txt += `[Muestra 1 - ${res.g1}]: Media = ${fmt3(res.m1)}, DE = ${fmt3(res.sd1)}, n = ${res.n1}\n`;
   txt += `[Muestra 2 - ${res.g2}]: Media = ${fmt3(res.m2)}, DE = ${fmt3(res.sd2)}, n = ${res.n2}\n\n`;
 
-  txt += `Prueba de Varianzas (F-test): p-valor = ${fmtP(res.f_p)}\n`;
+  txt += `Prueba de Varianzas (Levene): p-valor = ${fmtP(res.f_p)}\n`;
   if (res.calcIC) {
     const isEq = res.f_p >= 0.05;
     txt += `Diferencia de Medias = ${fmt3(res.diff)}\n`;
@@ -259,7 +285,7 @@ function buildResumenIA(res: ResultadosMedias): string {
     const isEq = res.f_p >= 0.05;
     txt += `Prueba T (Bilateral) p-valor = ${fmtP(isEq ? res.p_eq_bil : res.p_uneq_bil)}\n`;
   }
-  txt += `\nINSTRUCCIONES PARA LA IA: Analiza si existe diferencia significativa entre las dos medias poblacionales con base en el p-valor de la Prueba T (usa el de varianzas iguales si el p-valor de la prueba F es >=0.05, y el de Welch en caso contrario). Describe qué grupo tuvo una media mayor y la implicación clínica. Responde en prosa profesional y concisa.`;
+  txt += `\nINSTRUCCIONES PARA LA IA: Analiza si existe diferencia significativa entre las dos medias poblacionales con base en el p-valor de la Prueba T (usa el de varianzas iguales si el p-valor de la prueba de Levene es >=0.05, y el de Welch en caso contrario). Describe qué grupo tuvo una media mayor y la implicación clínica. Responde en prosa profesional y concisa.`;
   return txt;
 }
 
@@ -291,8 +317,8 @@ async function exportarExcel(res: ResultadosMedias): Promise<void> {
   html += `<tr><td colspan="3"></td></tr>`;
   html += `<tr><td colspan="3" style="font-weight:bold; text-decoration: underline;">Resultados:</td></tr>`;
 
-  html += `<tr><td colspan="3">Prueba de comparación de varianzas (F de Snedecor)</td></tr>`;
-  html += `<tr><th style="${cssTh}">Estadístico F</th><th style="${cssTh}">gl numerador</th><th style="${cssTh}">gl denominador</th><th style="${cssTh}">Valor p</th></tr>`;
+  html += `<tr><td colspan="3">Prueba de comparación de varianzas (Levene)</td></tr>`;
+  html += `<tr><th style="${cssTh}">Estadístico W</th><th style="${cssTh}">gl numerador</th><th style="${cssTh}">gl denominador</th><th style="${cssTh}">Valor p</th></tr>`;
   html += `<tr><td style="${cssTdNum}">${fmt3(res.f_stat).replace(".", ",")}</td><td style="${cssTdNum}">${res.f_df1}</td><td style="${cssTdNum}">${res.f_df2}</td><td style="${cssTdNum}">${fmtP(res.f_p)}</td></tr>`;
   html += `<tr><td colspan="4" style="font-size:12px;">gl: grados de libertad</td></tr>`;
   html += `<tr><td colspan="4"></td></tr>`;
@@ -352,8 +378,8 @@ function exportarWord(res: ResultadosMedias): void {
   html += `<p style="${css.p}">Nivel de confianza: ${res.nc},0%</p>`;
   html += `<h3 style="${css.h3}">Resultados:</h3>`;
 
-  html += `<p style="${css.p}">Prueba de comparación de varianzas (F de Snedecor)</p>`;
-  html += `<table style="${css.tbl}"><thead><tr><th style="${css.th}">Estadístico F</th><th style="${css.th}">gl numerador</th><th style="${css.th}">gl denominador</th><th style="${css.th}">Valor p</th></tr></thead><tbody>`;
+  html += `<p style="${css.p}">Prueba de comparación de varianzas (Levene)</p>`;
+  html += `<table style="${css.tbl}"><thead><tr><th style="${css.th}">Estadístico W</th><th style="${css.th}">gl numerador</th><th style="${css.th}">gl denominador</th><th style="${css.th}">Valor p</th></tr></thead><tbody>`;
   html += `<tr><td style="${css.td}">${fmt3(res.f_stat).replace(".", ",")}</td><td style="${css.td}">${res.f_df1}</td><td style="${css.td}">${res.f_df2}</td><td style="${css.td}">${fmtP(res.f_p)}</td></tr>`;
   html += `</tbody></table><p style="${css.p}; font-size:10pt">gl: grados de libertad</p>`;
 
@@ -575,7 +601,8 @@ export default function InferenciaMediasIndep({
     return {
       g1: val1, g2: val2,
       m1: st1.m, sd1: st1.sd, n1: st1.n,
-      m2: st2.m, sd2: st2.sd, n2: st2.n
+      m2: st2.m, sd2: st2.sd, n2: st2.n,
+      arr1, arr2
     };
   }, [datosExcel, colResumir, colGrupo, filterRules, filterCombo]);
 
@@ -611,10 +638,13 @@ export default function InferenciaMediasIndep({
     setTimeout(() => {
       try {
         const { m1, sd1, n1, m2, sd2, n2, g1, g2 } = efectivos;
+        const rawArr1 = (efectivos as any)?.arr1 as number[] | undefined;
+        const rawArr2 = (efectivos as any)?.arr2 as number[] | undefined;
         const resultados = calcMediasIndependientes(
           m1, sd1, n1, m2, sd2, n2, nivelConf,
           calcBil, calcUIzq, calcUDer, calcIC,
-          varLabel, groupLabel, g1, g2
+          varLabel, groupLabel, g1, g2,
+          rawArr1, rawArr2
         );
         setRes(resultados);
       } catch (ex: unknown) {
@@ -778,7 +808,7 @@ export default function InferenciaMediasIndep({
             <Icon d={IC_SVG.info} size={13} />
           </span>
           <span style={{ lineHeight: 1.65 }}>
-            <b>¿Para qué sirve?</b> Analiza si una variable continua (ej. Nivel de Glucosa) difiere significativamente entre dos grupos distintos (ej. Hombres vs Mujeres). La prueba F de Snedecor evalúa si las varianzas son homogéneas para determinar el estadístico t adecuado.
+            <b>¿Para qué sirve?</b> Analiza si una variable continua (ej. Nivel de Glucosa) difiere significativamente entre dos grupos distintos (ej. Hombres vs Mujeres). La prueba de Levene evalúa si las varianzas son homogéneas para determinar el estadístico t adecuado.
           </span>
         </div>
 
@@ -985,8 +1015,8 @@ export default function InferenciaMediasIndep({
 
             {/* TABLA DE VARIANZAS */}
             <TablaAcademica
-              titulo="Prueba de comparación de varianzas (F de Snedecor)"
-              headers={["Estadístico F", "gl numerador", "gl denominador", "Valor p"]}
+              titulo="Prueba de comparación de varianzas (Levene)"
+              headers={["Estadístico W", "gl numerador", "gl denominador", "Valor p"]}
               filas={[[
                 { v: fmt3(res.f_stat).replace(".", ","), mono: true, align: "right" },
                 { v: res.f_df1, mono: true, align: "right" },
