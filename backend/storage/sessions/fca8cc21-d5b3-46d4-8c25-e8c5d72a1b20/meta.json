@@ -1,0 +1,8 @@
+{
+  "current_version": 0,
+  "history": [],
+  "intentional_missing": {},
+  "audit_log": [
+    "[2026-04-10 20:45:00] Session created. Original file: 'PGDPCM.xls'. Initial rows: 4002"
+  ]
+}
