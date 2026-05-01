@@ -9,6 +9,7 @@ import InferenciaTasaIncidencia from './inferencia/InferenciaTasaIncidencia';
 import InferenciaIndicePosicion from './inferencia/InferenciaIndicePosicion';
 import InferenciaMediasIndep from './inferencia/InferenciaMediasIndep';
 import InferenciaMediasEmparejadas from './inferencia/InferenciaMediasEmparejadas';
+import InferenciaProporcionesIndependientes from './inferencia/InferenciaProporcionesIndependientes';
 import { useDataContext } from '../context/DataContext';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
@@ -81,7 +82,7 @@ interface InferenciaParametrosProps {
 
 export function InferenciaParametros({ onNavigate, resetSignal = 0 }: InferenciaParametrosProps) {
   const [activeCard, setActiveCard] = useState('una-poblacion');
-  const [subView, setSubView] = useState<'hub' | 'una-poblacion' | 'dos-poblaciones' | 'media' | 'proporcion' | 'correlacion' | 'percentiles' | 'tasa-incidencia' | 'indice-posicion' | 'medias-independientes' | 'medias-emparejadas'>('hub');
+  const [subView, setSubView] = useState<'hub' | 'una-poblacion' | 'dos-poblaciones' | 'media' | 'proporcion' | 'correlacion' | 'percentiles' | 'tasa-incidencia' | 'indice-posicion' | 'medias-independientes' | 'medias-emparejadas' | 'proporciones-independientes'>('hub');
   const { sessionId } = useDataContext();
   const [allExcelData, setAllExcelData] = useState<any[] | null>(null);
   const [loadingExcel, setLoadingExcel] = useState(false);
@@ -133,7 +134,7 @@ export function InferenciaParametros({ onNavigate, resetSignal = 0 }: Inferencia
   }, [sessionId]);
 
   useEffect(() => {
-    if ((subView === 'media' || subView === 'proporcion' || subView === 'correlacion' || subView === 'percentiles' || subView === 'tasa-incidencia' || subView === 'indice-posicion' || subView === 'medias-independientes' || subView === 'medias-emparejadas') && sessionId && !allExcelData) {
+    if ((subView === 'media' || subView === 'proporcion' || subView === 'correlacion' || subView === 'percentiles' || subView === 'tasa-incidencia' || subView === 'indice-posicion' || subView === 'medias-independientes' || subView === 'medias-emparejadas' || subView === 'proporciones-independientes') && sessionId && !allExcelData) {
       fetchAllData();
     }
   }, [subView, sessionId, allExcelData, fetchAllData]);
@@ -182,6 +183,8 @@ export function InferenciaParametros({ onNavigate, resetSignal = 0 }: Inferencia
             setSubView('medias-independientes');
           } else if (methodId === 'medias-emp') {
             setSubView('medias-emparejadas');
+          } else if (methodId === 'prop-ind') {
+            setSubView('proporciones-independientes');
           }
         }}
       />
@@ -202,6 +205,17 @@ export function InferenciaParametros({ onNavigate, resetSignal = 0 }: Inferencia
   if (subView === 'medias-emparejadas') {
     return (
       <InferenciaMediasEmparejadas
+        onBack={() => setSubView('dos-poblaciones')}
+        datosExcel={allExcelData}
+        loadingExcel={loadingExcel}
+        onContinuarChat={() => onNavigate?.('asistente')}
+      />
+    );
+  }
+
+  if (subView === 'proporciones-independientes') {
+    return (
+      <InferenciaProporcionesIndependientes
         onBack={() => setSubView('dos-poblaciones')}
         datosExcel={allExcelData}
         loadingExcel={loadingExcel}
