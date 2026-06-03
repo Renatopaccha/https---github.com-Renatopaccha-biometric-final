@@ -365,7 +365,7 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
 
           // Filas de datos
           selectedVars.forEach(rowVar => {
-            const row = [rowVar];
+            const row: (string | number)[] = [rowVar];
             selectedVars.forEach(colVar => {
               const cell = matrixData[rowVar]?.[colVar];
               if (rowVar === colVar) {
@@ -457,7 +457,7 @@ export function CorrelacionesView({ onBack, onNavigateToChat }: CorrelacionesVie
     setIsAnalyzing(true);
     try {
       const prompt = `Analiza correlaciones entre: ${selectedVars.join(', ')}.`;
-      const resp = await sendChatMessage({ session_id: sessionId, message: prompt, history: [] });
+      const resp = await sendChatMessage({ session_id: sessionId || undefined, message: prompt, history: [] });
       if (resp.success) setAnalysisResult(resp.response);
     } catch (e) { console.error(e); }
     finally { setIsAnalyzing(false); }

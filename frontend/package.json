@@ -33,6 +33,7 @@
             "clsx": "*",
             "cmdk": "^1.1.1",
             "embla-carousel-react": "^8.6.0",
+            "framer-motion": "^12.38.0",
             "html2canvas": "^1.4.1",
             "input-otp": "^1.4.2",
             "jspdf": "^2.5.2",
@@ -55,7 +56,10 @@
       "devDependencies": {
             "@types/html2canvas": "^0.5.35",
             "@types/node": "^20.10.0",
+            "@types/react": "^19.2.14",
+            "@types/react-dom": "^19.2.3",
             "@vitejs/plugin-react-swc": "^3.10.2",
+            "typescript": "^6.0.3",
             "vite": "6.3.5"
       },
       "scripts": {

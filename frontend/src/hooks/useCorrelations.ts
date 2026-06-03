@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { FilterRule } from '../types/stats';
+export type { FilterRule };
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE_URL = `${BASE_URL}/api/v1`;

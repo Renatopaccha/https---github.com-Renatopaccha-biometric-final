@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 /* ─────────────── Data ─────────────── */
 
@@ -13,7 +13,7 @@ interface Category {
   id: string;
   label: string;
   description: string;
-  icon: JSX.Element;
+  icon: React.ReactElement;
   items: CategoryItem[];
 }
 

@@ -11,6 +11,8 @@ interface DataContextType {
     columns: string[];
     setColumns: (columns: string[]) => void;  // ✅ NUEVO: Exponemos setColumns
     totalRows: number;
+    filename: string | null;
+    setFilename: (name: string | null) => void;
     healthReport: DatasetHealthReport | null;
     isLoading: boolean;
     error: string | null;
@@ -24,6 +26,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const [sessionId, setSessionIdState] = useState<string | null>(null);
     const [data, setData] = useState<DataRow[]>([]);
     const [columns, setColumns] = useState<string[]>([]);
+    const [filename, setFilenameState] = useState<string | null>(null);
     const [totalRows, setTotalRows] = useState<number>(0);
     const [healthReport, setHealthReport] = useState<DatasetHealthReport | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -39,9 +42,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
             // Reset state on logout/clear
             setData([]);
             setColumns([]);
+            setFilenameState(null);
             setTotalRows(0);
             setHealthReport(null);
         }
+    }, []);
+
+    const setFilename = useCallback((name: string | null) => {
+        setFilenameState(name);
     }, []);
 
     // Restore session on mount
@@ -122,6 +130,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData,
         columns,
         setColumns,
+        filename,
+        setFilename,
         totalRows,
         healthReport,
         isLoading,
@@ -133,6 +143,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSessionId,
         data,
         columns,
+        filename,
+        setFilename,
         totalRows,
         healthReport,
         isLoading,

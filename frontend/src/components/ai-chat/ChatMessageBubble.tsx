@@ -7,7 +7,7 @@ interface ChatMessageBubbleProps {
     id: string;
     role: 'user' | 'assistant';
     content: string;
-    timestamp: string;
+    timestamp?: string;
   };
 }
 

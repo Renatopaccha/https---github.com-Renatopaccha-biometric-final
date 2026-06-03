@@ -228,14 +228,14 @@ export default function MuestreoSistematico({ datosExcel = null, loadingExcel = 
 
           <div style={{ display:"grid", gridTemplateColumns: modo==="excel"&&datosExcel ? "1fr" : "1fr 1fr", gap:16 }}>
             {modo === "manual" && (
-              <FieldNum label="Tamaño de la población (N)" value={N} onChange={v=>{setN(v);setResult(null);}} placeholder="Ej: 5594"
+              <FieldNum label="Tamaño de la población (N)" value={N} onChange={(v: string)=>{setN(v);setResult(null);}} placeholder="Ej: 5594"
                 hint="Total de sujetos en el listado" tooltip="Número total de individuos en tu población ordenada. Por ejemplo: total de historias clínicas disponibles."/>
             )}
             {modo === "excel" && datosExcel && (
               <ExcelInfo rows={datosExcel.length} cols={Object.keys(datosExcel[0]).length}/>
             )}
             <FieldNum label={`Tamaño de la muestra (n)${modo==="excel"&&datosExcel?` — máx. ${datosExcel.length-1}`:""}`}
-              value={n} onChange={v=>{setN_(v);setResult(null);}} placeholder="Ej: 210"
+              value={n} onChange={(v: string)=>{setN_(v);setResult(null);}} placeholder="Ej: 210"
               hint="Número de sujetos a seleccionar"
               tooltip="Número de sujetos que deseas en tu muestra. El intervalo k se calcula automáticamente como k = floor(N/n)."/>
           </div>
